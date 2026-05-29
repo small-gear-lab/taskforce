@@ -6,7 +6,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Map;
 
-use crate::backend::{Task, TaskBackend, TaskStatus};
+use crate::backend::{NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput};
 
 #[derive(Debug, Clone)]
 pub struct LocalBackend {
@@ -134,8 +134,16 @@ impl TaskBackend for LocalBackend {
             .map_err(Into::into)
     }
 
-    fn add(&self, description: &str) -> Result<Task> {
-        let mut task = Task::new(None, generate_local_uuid(), description.to_string());
+    fn add(&self, input: NewTaskInput) -> Result<Task> {
+        let mut task = Task::new(None, generate_local_uuid(), input.title);
+        task.core.target_date = input.target_date;
+        task.core.deadline = input.deadline;
+        task.core.launch_date = input.launch_date;
+        task.core.target_time_hint = input.target_time_hint;
+        task.core.deadline_time_hint = input.deadline_time_hint;
+        task.core.launch_time_hint = input.launch_time_hint;
+        task.core.project = input.project;
+        task.core.tags = input.tags;
         let connection = self.connection()?;
         let tags_json = serde_json::to_string(&task.core.tags)?;
         let extra_json = serde_json::to_string(&task.extra)?;
@@ -181,12 +189,68 @@ impl TaskBackend for LocalBackend {
         Ok(task)
     }
 
-    fn edit(&self, id: u64, description: &str) -> Result<Task> {
+    fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task> {
         let connection = self.connection()?;
         let now = Utc::now().to_rfc3339();
+        let mut task = self.fetch_task(id)?;
+
+        if let Some(title) = input.title {
+            task.core.title = title;
+        }
+        if let Some(target_date) = input.target_date {
+            task.core.target_date = Some(target_date);
+        }
+        if let Some(deadline) = input.deadline {
+            task.core.deadline = Some(deadline);
+        }
+        if let Some(launch_date) = input.launch_date {
+            task.core.launch_date = Some(launch_date);
+        }
+        if let Some(target_time_hint) = input.target_time_hint {
+            task.core.target_time_hint = Some(target_time_hint);
+        }
+        if let Some(deadline_time_hint) = input.deadline_time_hint {
+            task.core.deadline_time_hint = Some(deadline_time_hint);
+        }
+        if let Some(launch_time_hint) = input.launch_time_hint {
+            task.core.launch_time_hint = Some(launch_time_hint);
+        }
+        if let Some(project) = input.project {
+            task.core.project = Some(project);
+        }
+        if let Some(tags) = input.tags {
+            task.core.tags = tags;
+        }
+
+        let tags_json = serde_json::to_string(&task.core.tags)?;
         let updated = connection.execute(
-            "UPDATE tasks SET title = ?1, updated_at = ?2 WHERE id = ?3",
-            params![description, now, id],
+            r#"
+            UPDATE tasks
+            SET title = ?1,
+                updated_at = ?2,
+                target_date = ?3,
+                deadline = ?4,
+                launch_date = ?5,
+                target_time_hint = ?6,
+                deadline_time_hint = ?7,
+                launch_time_hint = ?8,
+                project = ?9,
+                tags_json = ?10
+            WHERE id = ?11
+            "#,
+            params![
+                task.core.title,
+                now,
+                task.core.target_date.map(|value| value.to_string()),
+                task.core.deadline.map(|value| value.to_string()),
+                task.core.launch_date.map(|value| value.to_string()),
+                task.core.target_time_hint,
+                task.core.deadline_time_hint,
+                task.core.launch_time_hint,
+                task.core.project,
+                tags_json,
+                id,
+            ],
         )?;
 
         if updated == 0 {
@@ -305,18 +369,28 @@ mod tests {
     use anyhow::Result;
 
     use super::LocalBackend;
-    use crate::backend::TaskBackend;
+    use crate::backend::{NewTaskInput, TaskBackend, UpdateTaskInput};
 
     #[test]
     fn add_and_list_pending_tasks() -> Result<()> {
         let backend = LocalBackend::new(unique_db_path("taskforce-local-backend"))?;
 
-        let added = backend.add("Ship SQLite backend")?;
+        let added = backend.add(NewTaskInput {
+            title: "Ship SQLite backend".into(),
+            deadline: Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date")),
+            tags: vec!["release".into()],
+            ..Default::default()
+        })?;
         let tasks = backend.list_pending()?;
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, added.id);
         assert_eq!(tasks[0].title(), "Ship SQLite backend");
+        assert_eq!(
+            tasks[0].core.deadline,
+            Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date"))
+        );
+        assert_eq!(tasks[0].core.tags, vec!["release"]);
         Ok(())
     }
 
@@ -324,14 +398,30 @@ mod tests {
     fn edit_done_and_delete_task() -> Result<()> {
         let backend = LocalBackend::new(unique_db_path("taskforce-local-backend-status"))?;
 
-        let added = backend.add("Old title")?;
-        let edited = backend.edit(added.id.expect("id"), "New title")?;
+        let added = backend.add(NewTaskInput {
+            title: "Old title".into(),
+            ..Default::default()
+        })?;
+        let edited = backend.edit(
+            added.id.expect("id"),
+            UpdateTaskInput {
+                title: Some("New title".into()),
+                project: Some("taskforce".into()),
+                tags: Some(vec!["ops".into()]),
+                ..Default::default()
+            },
+        )?;
         assert_eq!(edited.title(), "New title");
+        assert_eq!(edited.core.project.as_deref(), Some("taskforce"));
+        assert_eq!(edited.core.tags, vec!["ops"]);
 
         let done = backend.mark_done(added.id.expect("id"))?;
         assert_eq!(done.core.status, crate::backend::TaskStatus::Done);
 
-        let second = backend.add("Delete me")?;
+        let second = backend.add(NewTaskInput {
+            title: "Delete me".into(),
+            ..Default::default()
+        })?;
         let deleted = backend.delete(second.id.expect("id"))?;
         assert_eq!(deleted.core.status, crate::backend::TaskStatus::Deleted);
         Ok(())

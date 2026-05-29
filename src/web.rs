@@ -250,7 +250,9 @@ mod tests {
     use chrono::Utc;
     use tower::ServiceExt;
 
-    use crate::backend::{CoreTaskFields, Task, TaskBackend, TaskStatus};
+    use crate::backend::{
+        CoreTaskFields, NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput,
+    };
 
     #[derive(Clone)]
     struct MockBackend {
@@ -262,11 +264,11 @@ mod tests {
             Ok(self.tasks.clone())
         }
 
-        fn add(&self, _description: &str) -> anyhow::Result<Task> {
+        fn add(&self, _input: NewTaskInput) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
-        fn edit(&self, _id: u64, _description: &str) -> anyhow::Result<Task> {
+        fn edit(&self, _id: u64, _input: UpdateTaskInput) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
