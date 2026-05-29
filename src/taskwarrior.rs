@@ -3,8 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow, bail};
+use chrono::{DateTime, Utc};
+use serde::Deserialize;
+use serde_json::{Map, Value};
 
-use crate::backend::{Task, TaskBackend};
+use crate::backend::{Task, TaskBackend, TaskStatus};
 use crate::config::{AppConfig, task_bin_env};
 
 pub trait TaskRunner {
@@ -133,9 +136,9 @@ where
         args.push("export".into());
 
         let output = self.runner.command_output(&args)?;
-        let tasks: Vec<Task> =
+        let tasks: Vec<TaskwarriorTaskRecord> =
             serde_json::from_slice(&output).context("failed to parse Taskwarrior JSON")?;
-        Ok(tasks)
+        Ok(tasks.into_iter().map(Task::from).collect())
     }
 
     fn run(&self, args: Vec<String>) -> Result<()> {
@@ -180,11 +183,65 @@ fn base_args() -> Vec<String> {
 fn sort_tasks(tasks: &mut [Task]) {
     tasks.sort_by(|left, right| {
         right
-            .urgency
-            .partial_cmp(&left.urgency)
+            .urgency()
+            .partial_cmp(&left.urgency())
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| left.id.cmp(&right.id))
     });
+}
+
+#[derive(Debug, Deserialize)]
+struct TaskwarriorTaskRecord {
+    id: Option<u64>,
+    uuid: String,
+    description: String,
+    #[serde(default)]
+    urgency: f64,
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    entry: Option<DateTime<Utc>>,
+    #[serde(default)]
+    modified: Option<DateTime<Utc>>,
+    #[serde(default)]
+    due: Option<DateTime<Utc>>,
+    #[serde(default)]
+    status: Option<String>,
+}
+
+impl From<TaskwarriorTaskRecord> for Task {
+    fn from(record: TaskwarriorTaskRecord) -> Self {
+        let created_at = record.entry.unwrap_or_else(Utc::now);
+        let updated_at = record.modified.unwrap_or(created_at);
+        let mut task = Task::new(record.id, record.uuid, record.description);
+        task.core.status = parse_task_status(record.status.as_deref());
+        task.core.created_at = created_at;
+        task.core.updated_at = updated_at;
+        task.core.deadline = record.due.map(|due| due.date_naive());
+        task.core.project = record.project;
+        task.core.tags = record.tags;
+        task.extra = taskwarrior_extra_fields(record.urgency);
+        task
+    }
+}
+
+fn parse_task_status(status: Option<&str>) -> TaskStatus {
+    match status {
+        Some("pending") => TaskStatus::Pending,
+        Some("completed") => TaskStatus::Done,
+        Some("deleted") => TaskStatus::Deleted,
+        Some("waiting") => TaskStatus::Waiting,
+        Some("recurring") => TaskStatus::Active,
+        _ => TaskStatus::Pending,
+    }
+}
+
+fn taskwarrior_extra_fields(urgency: f64) -> Map<String, Value> {
+    let mut extra = Map::new();
+    extra.insert("urgency".into(), Value::from(urgency));
+    extra
 }
 
 fn resolve_task_bin(config: &AppConfig) -> Result<PathBuf> {
@@ -368,7 +425,7 @@ mod tests {
 
         let task = client.edit(4, "New title")?;
 
-        assert_eq!(task.description, "New title");
+        assert_eq!(task.title(), "New title");
         assert_eq!(
             runner.commands(),
             vec![
@@ -405,7 +462,7 @@ mod tests {
 
         let task = client.delete(9)?;
 
-        assert_eq!(task.description, "Obsolete");
+        assert_eq!(task.title(), "Obsolete");
         assert_eq!(
             runner.commands(),
             vec![

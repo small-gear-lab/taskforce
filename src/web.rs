@@ -226,9 +226,9 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
           item.innerHTML = `
             <span class="task-id">#${task.id ?? "?"}</span>
             <span class="task-desc"></span>
-            <span class="task-urgency">urgency ${Number(task.urgency ?? 0).toFixed(1)}</span>
+            <span class="task-urgency">urgency ${Number(task.extra?.urgency ?? 0).toFixed(1)}</span>
           `;
-          item.querySelector(".task-desc").textContent = task.description;
+          item.querySelector(".task-desc").textContent = task.core.title;
           taskList.appendChild(item);
         }
       }
@@ -247,20 +247,65 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
 mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
+    use chrono::Utc;
     use tower::ServiceExt;
 
-    use crate::backend::Task;
-    use crate::taskwarrior::TaskwarriorClient;
+    use crate::backend::{CoreTaskFields, Task, TaskBackend, TaskStatus};
+
+    #[derive(Clone)]
+    struct MockBackend {
+        tasks: Vec<Task>,
+    }
+
+    impl TaskBackend for MockBackend {
+        fn list_pending(&self) -> anyhow::Result<Vec<Task>> {
+            Ok(self.tasks.clone())
+        }
+
+        fn add(&self, _description: &str) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        fn edit(&self, _id: u64, _description: &str) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        fn delete(&self, _id: u64) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        fn mark_done(&self, _id: u64) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        fn next_task(&self) -> anyhow::Result<Option<Task>> {
+            Ok(self.tasks.first().cloned())
+        }
+    }
 
     #[tokio::test]
     async fn api_tasks_returns_task_json() {
-        let client = TaskwarriorClient::from_tasks(vec![Task {
+        let backend = MockBackend { tasks: vec![Task {
             id: Some(3),
             uuid: "abc".into(),
-            description: "Ship MVP".into(),
-            urgency: 7.5,
-        }]);
-        let app = crate::web::app_router(client);
+            core: CoreTaskFields {
+                title: "Ship MVP".into(),
+                status: TaskStatus::Pending,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                target_date: None,
+                deadline: None,
+                launch_date: None,
+                target_time_hint: None,
+                deadline_time_hint: None,
+                launch_time_hint: None,
+                project: None,
+                tags: Vec::new(),
+            },
+            annotations: Vec::new(),
+            extra: serde_json::Map::from_iter([("urgency".into(), serde_json::Value::from(7.5))]),
+        }] };
+        let app = crate::web::app_router(backend);
 
         let response = app
             .oneshot(
@@ -277,13 +322,12 @@ mod tests {
             .await
             .expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
-        assert!(text.contains("\"description\":\"Ship MVP\""));
+        assert!(text.contains("\"title\":\"Ship MVP\""));
     }
 
     #[tokio::test]
     async fn index_page_renders_taskforce_heading() {
-        let client = TaskwarriorClient::from_tasks(Vec::new());
-        let app = crate::web::app_router(client);
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
         let response = app
             .oneshot(
