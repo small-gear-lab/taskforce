@@ -5,8 +5,11 @@ use axum::extract::{Path, State};
 use axum::response::Html;
 use axum::routing::get;
 use axum::{Json, Router, http::StatusCode};
+use serde_json::{Map, Value, json};
 
 use crate::backend::{Task, TaskBackend};
+use crate::i18n::tr;
+use crate::plugin::logical_field_labels;
 
 pub async fn serve<B>(backend: B, addr: SocketAddr) -> Result<()>
 where
@@ -31,8 +34,8 @@ where
         .with_state(backend)
 }
 
-async fn index() -> Html<&'static str> {
-    Html(INDEX_HTML)
+async fn index() -> Html<String> {
+    Html(render_index_html())
 }
 
 async fn api_tasks<B>(State(backend): State<B>) -> Result<Json<Vec<Task>>, axum::http::StatusCode>
@@ -58,8 +61,8 @@ where
         .map_err(map_task_error_status)
 }
 
-async fn task_detail(Path(_id): Path<u64>) -> Html<&'static str> {
-    Html(DETAIL_HTML)
+async fn task_detail(Path(_id): Path<u64>) -> Html<String> {
+    Html(render_detail_html())
 }
 
 fn map_task_error_status(error: anyhow::Error) -> StatusCode {
@@ -70,7 +73,113 @@ fn map_task_error_status(error: anyhow::Error) -> StatusCode {
     }
 }
 
-const INDEX_HTML: &str = r#"<!DOCTYPE html>
+fn render_index_html() -> String {
+    render_template(
+        INDEX_HTML_TEMPLATE,
+        &[
+            ("__LOCAL_TASK_CONSOLE__", tr("Local Task Console")),
+            (
+                "__INDEX_LEDE__",
+                tr(
+                    "Open tasks from your local taskforce database, served over a tiny local HTTP view.",
+                ),
+            ),
+            ("__OPEN_TASKS__", tr("Open Tasks")),
+            ("__REFRESH__", tr("Refresh")),
+            ("__NO_OPEN_TASKS__", tr("No open tasks.")),
+            ("__URGENCY__", tr("urgency")),
+        ],
+    )
+}
+
+fn render_detail_html() -> String {
+    render_template(
+        DETAIL_HTML_TEMPLATE,
+        &[
+            ("__BACK_TO_OPEN_TASKS__", tr("Back to Open Tasks")),
+            ("__LOADING_TASK__", tr("Loading task…")),
+            ("__DESCRIPTION__", tr("Description")),
+            ("__ORIGINAL_REQUEST__", tr("Original Request")),
+            ("__SCOPE__", tr("Scope")),
+            ("__NO_SCOPE_DETAILS__", tr("No scope details.")),
+            ("__SCHEDULE__", tr("Schedule")),
+            ("__PROJECT_AND_TAGS__", tr("Project & Tags")),
+            ("__PROJECT__", tr("Project")),
+            ("__TAGS__", tr("Tags")),
+            ("__CHATWORK__", tr("Chatwork")),
+            ("__REQUESTER__", tr("Requester")),
+            ("__THIS_REQUEST__", tr("This Request")),
+            ("__RELATED_REQUEST__", tr("Related Request")),
+            ("__SOURCE__", tr("Source")),
+            ("__EXTRA_DATA__", tr("Extra Data")),
+            ("__TREE__", tr("Tree")),
+            ("__RAW__", tr("Raw")),
+            ("__EXPAND_ALL__", tr("Expand all")),
+            ("__COLLAPSE_ALL__", tr("Collapse all")),
+            ("__DASH_JS__", js_literal(&tr("—"))),
+            (
+                "__NO_ABSTRACT_YET_JS__",
+                js_literal(&tr("No abstract yet.")),
+            ),
+            (
+                "__NO_DESCRIPTION_YET_JS__",
+                js_literal(&tr("No description yet.")),
+            ),
+            ("__TASK_NOT_FOUND_JS__", js_literal(&tr("Task not found"))),
+            (
+                "__TASK_COULD_NOT_BE_LOADED_JS__",
+                js_literal(&tr("The requested task could not be loaded.")),
+            ),
+            ("__SENDER_PREFIX_JS__", js_literal(&tr("sender:"))),
+            ("__SENT_PREFIX_JS__", js_literal(&tr("sent:"))),
+            ("__NO_PROJECT_JS__", js_literal(&tr("no project"))),
+            ("__ANNOTATIONS_JS__", js_literal(&tr("annotations"))),
+            ("__TARGET_JS__", js_literal(&tr("Target"))),
+            ("__DEADLINE_JS__", js_literal(&tr("Deadline"))),
+            ("__LAUNCH_JS__", js_literal(&tr("Launch"))),
+            ("__NO_TAGS_JS__", js_literal(&tr("No tags."))),
+            ("__UNKNOWN_TARGET_JS__", js_literal(&tr("Unknown target"))),
+            ("__NO_EXTRA_DATA_JS__", js_literal(&tr("No extra data."))),
+            (
+                "__NO_ORIGINAL_REQUEST_JS__",
+                js_literal(&tr("Original request text is not available.")),
+            ),
+            ("__UNSTARTED_JS__", js_literal(&tr("unstarted"))),
+            ("__ACTIVE_JS__", js_literal(&tr("active"))),
+            ("__PENDING_JS__", js_literal(&tr("pending"))),
+            ("__DONE_JS__", js_literal(&tr("done"))),
+            ("__ABANDONED_JS__", js_literal(&tr("abandoned"))),
+            ("__MISTAKEN_JS__", js_literal(&tr("mistaken"))),
+            ("__DUPLICATED_JS__", js_literal(&tr("duplicated"))),
+            ("__LOGICAL_LABELS_JS__", logical_labels_js()),
+        ],
+    )
+}
+
+fn render_template(template: &str, replacements: &[(&str, String)]) -> String {
+    let mut rendered = template.to_string();
+    for (placeholder, replacement) in replacements {
+        rendered = rendered.replace(placeholder, replacement);
+    }
+    rendered
+}
+
+fn js_literal(text: &str) -> String {
+    json!(text).to_string()
+}
+
+fn logical_labels_js() -> String {
+    let mut labels = Map::new();
+    for entry in logical_field_labels() {
+        labels.insert(
+            entry.physical_path.to_string(),
+            Value::String(tr(entry.msgid)),
+        );
+    }
+    Value::Object(labels).to_string()
+}
+
+const INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -233,19 +342,19 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
   <body>
     <main>
       <section class="hero">
-        <div class="eyebrow">Local Task Console</div>
+        <div class="eyebrow">__LOCAL_TASK_CONSOLE__</div>
         <h1>taskforce</h1>
         <p class="lede">
-          Open tasks from your local taskforce database, served over a tiny local HTTP view.
+          __INDEX_LEDE__
         </p>
       </section>
       <section class="panel">
         <div class="panel-head">
-          <h2>Open Tasks</h2>
-          <button id="refresh" type="button">Refresh</button>
+          <h2>__OPEN_TASKS__</h2>
+          <button id="refresh" type="button">__REFRESH__</button>
         </div>
         <ul id="task-list"></ul>
-        <div id="empty" class="empty" hidden>No open tasks.</div>
+        <div id="empty" class="empty" hidden>__NO_OPEN_TASKS__</div>
       </section>
     </main>
     <script>
@@ -265,7 +374,7 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
           item.innerHTML = `
             <span class="task-id">#${task.id ?? "?"}</span>
             <span class="task-desc"><a class="task-link" href="/tasks/${task.id ?? ""}"></a></span>
-            <span class="task-urgency">urgency ${Number(task.extra?.urgency ?? 0).toFixed(1)}</span>
+            <span class="task-urgency">__URGENCY__ ${Number(task.extra?.urgency ?? 0).toFixed(1)}</span>
           `;
           item.querySelector(".task-link").textContent = task.core.title;
           taskList.appendChild(item);
@@ -282,7 +391,7 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
 </html>
 "#;
 
-const DETAIL_HTML: &str = r#"<!DOCTYPE html>
+const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -458,6 +567,38 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
         gap: 14px;
       }
 
+      .view-toggle {
+        display: inline-flex;
+        gap: 6px;
+        padding: 4px;
+        border: 1px solid rgba(23, 21, 18, 0.08);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .view-toggle button {
+        padding: 8px 12px;
+        color: var(--accent-2);
+        background: transparent;
+      }
+
+      .view-toggle button.is-active {
+        color: #fffaf3;
+        background: linear-gradient(135deg, var(--accent), #d47936);
+      }
+
+      .extra-tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .extra-tools button {
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+
       .kv-item {
         display: grid;
         gap: 6px;
@@ -532,6 +673,148 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
         line-height: 1.6;
       }
 
+      .tree-root,
+      .tree-children {
+        display: grid;
+        gap: 10px;
+      }
+
+      .plugin-section {
+        border-top: 1px solid rgba(23, 21, 18, 0.08);
+        padding-top: 14px;
+      }
+
+      .plugin-section:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .plugin-section details {
+        display: grid;
+        gap: 12px;
+      }
+
+      .plugin-section__summary {
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .plugin-section__summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .plugin-section__summary::before {
+        content: "▶";
+        display: inline-block;
+        width: 1em;
+        color: var(--accent);
+        transition: transform 140ms ease;
+      }
+
+      .plugin-section details[open] > .plugin-section__summary::before {
+        transform: rotate(90deg);
+      }
+
+      .plugin-section__content {
+        display: grid;
+        gap: 12px;
+      }
+
+      .tree-node {
+        border: 1px solid rgba(23, 21, 18, 0.08);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.6);
+        overflow: hidden;
+      }
+
+      .tree-node details {
+        padding: 0;
+      }
+
+      .tree-node summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 12px 14px;
+        display: flex;
+        justify-content: flex-start;
+        gap: 14px;
+        align-items: baseline;
+      }
+
+      .tree-node summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .tree-node--branch summary::before {
+        content: "▶";
+        display: inline-block;
+        width: 1em;
+        margin-right: 10px;
+        color: var(--accent);
+        transform-origin: center;
+        transition: transform 140ms ease;
+      }
+
+      .tree-node--branch details[open] > summary::before {
+        transform: rotate(90deg);
+      }
+
+      .tree-key {
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent-2);
+      }
+
+      .tree-preview {
+        color: var(--muted);
+        font-size: 14px;
+        text-align: left;
+      }
+
+      .tree-content {
+        padding: 0 14px 14px;
+      }
+
+      .tree-leaf {
+        display: grid;
+        gap: 6px;
+        padding: 12px 14px;
+      }
+
+      .tree-node--leaf {
+        position: relative;
+      }
+
+      .tree-node--leaf::before {
+        content: "•";
+        position: absolute;
+        top: 13px;
+        left: 14px;
+        color: var(--accent-3);
+        font-size: 18px;
+        line-height: 1;
+      }
+
+      .tree-node--leaf .tree-key,
+      .tree-node--leaf .tree-leaf-value {
+        padding-left: 18px;
+      }
+
+      .tree-leaf-value {
+        font-size: 16px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .extra-view[hidden] {
+        display: none !important;
+      }
+
       .empty {
         color: var(--muted);
         font-style: italic;
@@ -557,60 +840,50 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
   <body>
     <main>
       <div class="topline">
-        <a class="backlink" href="/">Back to Open Tasks</a>
+        <a class="backlink" href="/">__BACK_TO_OPEN_TASKS__</a>
       </div>
       <section class="shell">
         <header class="hero">
           <div class="meta-line" id="meta-line"></div>
-          <h1 id="task-title">Loading task…</h1>
+          <h1 id="task-title">__LOADING_TASK__</h1>
           <p class="hero-copy" id="task-abstract"></p>
         </header>
         <div class="grid">
           <section class="column">
             <div class="section">
-              <div class="section-label">Description</div>
+              <div class="section-label">__DESCRIPTION__</div>
               <p class="section-body" id="task-description"></p>
             </div>
             <div class="section">
-              <div class="section-label">Scope</div>
+              <div class="section-label">__ORIGINAL_REQUEST__</div>
+              <p class="section-body" id="task-original-request"></p>
+            </div>
+            <div class="section">
+              <div class="section-label">__SCOPE__</div>
               <div class="scope-list" id="scope-list"></div>
-              <div class="empty" id="scope-empty" hidden>No scope details.</div>
+              <div class="empty" id="scope-empty" hidden>__NO_SCOPE_DETAILS__</div>
             </div>
           </section>
           <aside class="column">
             <div class="section">
-              <div class="section-label">Schedule</div>
+              <div class="section-label">__SCHEDULE__</div>
               <div class="schedule" id="schedule"></div>
             </div>
             <div class="section">
-              <div class="section-label">Project & Tags</div>
+              <div class="section-label">__PROJECT_AND_TAGS__</div>
               <div class="kv-list">
                 <div class="kv-item">
-                  <div class="kv-key">Project</div>
+                  <div class="kv-key">__PROJECT__</div>
                   <div class="kv-value" id="project-value"></div>
                 </div>
                 <div class="kv-item">
-                  <div class="kv-key">Tags</div>
+                  <div class="kv-key">__TAGS__</div>
                   <div class="tag-list" id="tag-list"></div>
                 </div>
               </div>
             </div>
             <div class="section">
-              <div class="section-label">Chatwork</div>
-              <div class="kv-list">
-                <div class="kv-item">
-                  <div class="kv-key">Requester</div>
-                  <div class="kv-value" id="requester-value"></div>
-                </div>
-                <div class="kv-item">
-                  <div class="kv-key">Source</div>
-                  <div class="kv-value" id="source-value"></div>
-                </div>
-                <div class="kv-item">
-                  <div class="kv-key">Raw Extra</div>
-                  <pre id="raw-extra"></pre>
-                </div>
-              </div>
+              <div id="plugin-extra-sections" class="kv-list"></div>
             </div>
           </aside>
         </div>
@@ -618,8 +891,18 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
     </main>
     <script>
       const taskId = window.location.pathname.split("/").pop();
+      const logicalLabels = __LOGICAL_LABELS_JS__;
+      const statusLabels = {
+        unstarted: __UNSTARTED_JS__,
+        active: __ACTIVE_JS__,
+        pending: __PENDING_JS__,
+        done: __DONE_JS__,
+        abandoned: __ABANDONED_JS__,
+        mistaken: __MISTAKEN_JS__,
+        duplicated: __DUPLICATED_JS__,
+      };
 
-      function textOrFallback(value, fallback = "—") {
+      function textOrFallback(value, fallback = __DASH_JS__) {
         return value == null || value === "" ? fallback : value;
       }
 
@@ -628,11 +911,26 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
         return [date, hint].filter(Boolean).join(" ");
       }
 
+      function extractInfoBlock(text) {
+        if (!text) {
+          return null;
+        }
+
+        const match = text.match(/\[info\]([\s\S]*?)\[\/info\]/i);
+        if (!match) {
+          return text.trim() || null;
+        }
+
+        return match[1]
+          .replace(/\[info\]|\[\/info\]/gi, "")
+          .trim();
+      }
+
       async function loadTask() {
         const response = await fetch(`/api/tasks/${taskId}`);
         if (!response.ok) {
-          document.getElementById("task-title").textContent = "Task not found";
-          document.getElementById("task-abstract").textContent = "The requested task could not be loaded.";
+          document.getElementById("task-title").textContent = __TASK_NOT_FOUND_JS__;
+          document.getElementById("task-abstract").textContent = __TASK_COULD_NOT_BE_LOADED_JS__;
           return;
         }
 
@@ -644,33 +942,26 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
         const tagList = document.getElementById("tag-list");
         const scopeList = document.getElementById("scope-list");
         const scopeEmpty = document.getElementById("scope-empty");
+        const pluginExtraSections = document.getElementById("plugin-extra-sections");
 
         document.title = `${task.core.title} | taskforce`;
         document.getElementById("task-title").textContent = task.core.title;
-        document.getElementById("task-abstract").textContent = textOrFallback(chatwork.abstract || chatwork.summary, "No abstract yet.");
-        document.getElementById("task-description").textContent = textOrFallback(chatwork.description, "No description yet.");
+        document.getElementById("task-abstract").textContent = textOrFallback(chatwork.abstract || chatwork.summary, __NO_ABSTRACT_YET_JS__);
+        document.getElementById("task-description").textContent = textOrFallback(chatwork.description, __NO_DESCRIPTION_YET_JS__);
+        document.getElementById("task-original-request").textContent = textOrFallback(
+          extractInfoBlock(source.body_raw),
+          __NO_ORIGINAL_REQUEST_JS__
+        );
         document.getElementById("project-value").textContent = textOrFallback(task.core.project);
-        document.getElementById("requester-value").textContent = textOrFallback(chatwork.requester);
-        document.getElementById("raw-extra").textContent = JSON.stringify(task.extra, null, 2);
-
-        const sourceParts = [];
-        if (source.url) {
-          sourceParts.push(source.url);
-        }
-        if (source.sender?.name) {
-          sourceParts.push(`sender: ${source.sender.name}`);
-        }
-        if (source.sent_at) {
-          sourceParts.push(`sent: ${source.sent_at}`);
-        }
-        document.getElementById("source-value").textContent = textOrFallback(sourceParts.join("\n"));
+        pluginExtraSections.innerHTML = "";
+        renderPluginExtraSections(pluginExtraSections, task.extra);
 
         metaLine.innerHTML = "";
         for (const chipText of [
           `#${task.id ?? "?"}`,
-          task.core.status,
-          task.core.project ?? "no project",
-          `${task.annotations?.length ?? 0} annotations`
+          statusLabels[task.core.status] ?? task.core.status,
+          task.core.project ?? __NO_PROJECT_JS__,
+          `${task.annotations?.length ?? 0} ${__ANNOTATIONS_JS__}`
         ]) {
           const chip = document.createElement("span");
           chip.className = "chip";
@@ -680,9 +971,9 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
 
         schedule.innerHTML = "";
         for (const [label, value] of [
-          ["Target", dateLine(task.core.target_date, task.core.target_time_hint)],
-          ["Deadline", dateLine(task.core.deadline, task.core.deadline_time_hint)],
-          ["Launch", dateLine(task.core.launch_date, task.core.launch_time_hint)]
+          [__TARGET_JS__, dateLine(task.core.target_date, task.core.target_time_hint)],
+          [__DEADLINE_JS__, dateLine(task.core.deadline, task.core.deadline_time_hint)],
+          [__LAUNCH_JS__, dateLine(task.core.launch_date, task.core.launch_time_hint)]
         ]) {
           const row = document.createElement("div");
           row.className = "schedule-row";
@@ -697,7 +988,7 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
         if ((task.core.tags ?? []).length === 0) {
           const empty = document.createElement("div");
           empty.className = "empty";
-          empty.textContent = "No tags.";
+          empty.textContent = __NO_TAGS_JS__;
           tagList.appendChild(empty);
         } else {
           for (const tag of task.core.tags) {
@@ -715,11 +1006,285 @@ const DETAIL_HTML: &str = r#"<!DOCTYPE html>
           const item = document.createElement("div");
           item.className = "scope-item";
           item.innerHTML = `
-            <strong>${site.label ?? "Unknown target"}</strong>
+            <strong>${site.label ?? __UNKNOWN_TARGET_JS__}</strong>
             <span>${[site.site_code, site.raw].filter(Boolean).join(" · ")}</span>
           `;
           scopeList.appendChild(item);
         }
+      }
+
+      function previewValue(value) {
+        if (Array.isArray(value)) {
+          return `${value.length} items`;
+        }
+        if (value && typeof value === "object") {
+          return `${Object.keys(value).length} fields`;
+        }
+        if (value == null) {
+          return __DASH_JS__;
+        }
+        const text = String(value);
+        return text.length > 52 ? `${text.slice(0, 52)}…` : text;
+      }
+
+      function labelFor(path, fallbackKey) {
+        return logicalLabels[path] ?? fallbackKey;
+      }
+
+      function isObject(value) {
+        return value != null && typeof value === "object" && !Array.isArray(value);
+      }
+
+      function normalizePluginExtra(extra) {
+        if (!isObject(extra)) {
+          return {};
+        }
+
+        if (isObject(extra.chatwork)) {
+          return extra;
+        }
+
+        const legacyChatworkKeys = [
+          "requester",
+          "request_url",
+          "related_request_url",
+          "summary",
+          "abstract",
+          "description",
+          "production_rollout",
+          "template_kind",
+          "target_sites",
+          "source",
+        ];
+
+        const chatwork = {};
+        let hasLegacyChatworkData = false;
+        for (const key of legacyChatworkKeys) {
+          if (Object.hasOwn(extra, key)) {
+            chatwork[key] = extra[key];
+            hasLegacyChatworkData = true;
+          }
+        }
+
+        if (!hasLegacyChatworkData) {
+          return extra;
+        }
+
+        return { chatwork };
+      }
+
+      function renderPluginExtraSections(container, extra) {
+        const namespaces = Object.entries(normalizePluginExtra(extra));
+
+        if (namespaces.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = __NO_EXTRA_DATA_JS__;
+          container.appendChild(empty);
+          return;
+        }
+
+        for (const [pluginKey, pluginValue] of namespaces) {
+          container.appendChild(renderPluginExtraSection(pluginKey, pluginValue));
+        }
+      }
+
+      function renderPluginExtraSection(pluginKey, pluginValue) {
+        const section = document.createElement("div");
+        section.className = "plugin-section";
+
+        const details = document.createElement("details");
+        details.open = true;
+
+        const summary = document.createElement("summary");
+        summary.className = "plugin-section__summary";
+        summary.innerHTML = `<span class="kv-key">${labelFor(pluginKey, pluginKey)}</span>`;
+        details.appendChild(summary);
+
+        const content = document.createElement("div");
+        content.className = "plugin-section__content";
+
+        const tools = document.createElement("div");
+        tools.className = "extra-tools";
+        tools.innerHTML = `
+          <div class="view-toggle" role="tablist" aria-label="${pluginKey}-data-view">
+            <button class="is-active" type="button">__TREE__</button>
+            <button type="button">__RAW__</button>
+          </div>
+          <button type="button">__EXPAND_ALL__</button>
+          <button type="button">__COLLAPSE_ALL__</button>
+        `;
+        content.appendChild(tools);
+
+        const treeView = document.createElement("div");
+        treeView.className = "extra-view tree-root";
+        if (pluginValue && typeof pluginValue === "object" && !Array.isArray(pluginValue)) {
+          const entries = Object.entries(pluginValue);
+          if (entries.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "empty";
+            empty.textContent = __NO_EXTRA_DATA_JS__;
+            treeView.appendChild(empty);
+          } else {
+            for (const [childKey, childValue] of entries) {
+              treeView.appendChild(
+                renderJsonTree(`${pluginKey}.${childKey}`, childKey, childValue)
+              );
+            }
+          }
+        } else {
+          treeView.appendChild(renderJsonTree(pluginKey, pluginKey, pluginValue));
+        }
+        content.appendChild(treeView);
+
+        const rawView = document.createElement("pre");
+        rawView.className = "extra-view";
+        rawView.hidden = true;
+        rawView.textContent = JSON.stringify(pluginValue, null, 2);
+        content.appendChild(rawView);
+
+        details.appendChild(content);
+        section.appendChild(details);
+
+        wireExtraViewToggle(
+          tools.querySelector(".view-toggle button:first-child"),
+          tools.querySelector(".view-toggle button:last-child"),
+          tools.querySelectorAll("button")[2],
+          tools.querySelectorAll("button")[3],
+          treeView,
+          rawView
+        );
+
+        return section;
+      }
+
+      function renderJsonTree(path, key, value) {
+        if (Array.isArray(value)) {
+          if (key === "extra") {
+            const wrapper = document.createElement("div");
+            wrapper.className = "tree-root";
+            value.forEach((item, index) => {
+              wrapper.appendChild(renderJsonTree(`${path}[]`, `[${index}]`, item));
+            });
+            if (value.length === 0) {
+              const empty = document.createElement("div");
+              empty.className = "empty";
+              empty.textContent = __NO_EXTRA_DATA_JS__;
+              wrapper.appendChild(empty);
+            }
+            return wrapper;
+          }
+
+          const details = document.createElement("details");
+          details.open = false;
+          const summary = document.createElement("summary");
+          summary.innerHTML = `
+            <span class="tree-key">${labelFor(path, key)}</span>
+            <span class="tree-preview">${previewValue(value)}</span>
+          `;
+          details.appendChild(summary);
+
+          const content = document.createElement("div");
+          content.className = "tree-content tree-children";
+          if (value.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "empty";
+            empty.textContent = __NO_EXTRA_DATA_JS__;
+            content.appendChild(empty);
+          } else {
+            value.forEach((item, index) => {
+              content.appendChild(renderJsonTree(`${path}[]`, `[${index}]`, item));
+            });
+          }
+          details.appendChild(content);
+
+          const wrapper = document.createElement("div");
+          wrapper.className = "tree-node tree-node--branch";
+          wrapper.appendChild(details);
+          return wrapper;
+        }
+
+        if (value && typeof value === "object") {
+          if (key === "extra") {
+            const wrapper = document.createElement("div");
+            wrapper.className = "tree-root";
+            const entries = Object.entries(value);
+            if (entries.length === 0) {
+              const empty = document.createElement("div");
+              empty.className = "empty";
+              empty.textContent = __NO_EXTRA_DATA_JS__;
+              wrapper.appendChild(empty);
+            } else {
+              for (const [childKey, childValue] of entries) {
+                wrapper.appendChild(renderJsonTree(childKey, childKey, childValue));
+              }
+            }
+            return wrapper;
+          }
+
+          const details = document.createElement("details");
+          details.open = key === "chatwork";
+          const summary = document.createElement("summary");
+          summary.innerHTML = `
+            <span class="tree-key">${labelFor(path, key)}</span>
+            <span class="tree-preview">${previewValue(value)}</span>
+          `;
+          details.appendChild(summary);
+
+          const content = document.createElement("div");
+          content.className = "tree-content tree-children";
+          const entries = Object.entries(value);
+          if (entries.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "empty";
+            empty.textContent = __NO_EXTRA_DATA_JS__;
+            content.appendChild(empty);
+          } else {
+            for (const [childKey, childValue] of entries) {
+              content.appendChild(renderJsonTree(`${path}.${childKey}`, childKey, childValue));
+            }
+          }
+          details.appendChild(content);
+
+          const wrapper = document.createElement("div");
+          wrapper.className = "tree-node tree-node--branch";
+          wrapper.appendChild(details);
+          return wrapper;
+        }
+
+        const leaf = document.createElement("div");
+        leaf.className = "tree-node tree-node--leaf tree-leaf";
+        leaf.innerHTML = `
+          <div class="tree-key">${labelFor(path, key)}</div>
+          <div class="tree-leaf-value">${textOrFallback(value)}</div>
+        `;
+        return leaf;
+      }
+
+      function wireExtraViewToggle(treeButton, rawButton, expandAllButton, collapseAllButton, treeView, rawView) {
+        function setMode(mode) {
+          const treeActive = mode === "tree";
+          treeButton.classList.toggle("is-active", treeActive);
+          rawButton.classList.toggle("is-active", !treeActive);
+          treeView.hidden = !treeActive;
+          rawView.hidden = treeActive;
+        }
+
+        treeButton.addEventListener("click", () => setMode("tree"));
+        rawButton.addEventListener("click", () => setMode("raw"));
+        expandAllButton.addEventListener("click", () => {
+          treeView.querySelectorAll("details").forEach((node) => {
+            node.open = true;
+          });
+          setMode("tree");
+        });
+        collapseAllButton.addEventListener("click", () => {
+          treeView.querySelectorAll("details").forEach((node) => {
+            node.open = false;
+          });
+          setMode("tree");
+        });
+        setMode("tree");
       }
 
       loadTask().catch(console.error);
@@ -948,5 +1513,87 @@ mod tests {
         let page_text = String::from_utf8(page_body.to_vec()).expect("utf8");
         assert!(page_text.contains("Description"));
         assert!(page_text.contains("Back to Open Tasks"));
+    }
+
+    #[tokio::test]
+    async fn detail_page_uses_plugin_sections_for_extra_data() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/tasks/1")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("plugin-extra-sections"));
+        assert!(!text.contains("requester-value"));
+        assert!(!text.contains("request-url-value"));
+        assert!(!text.contains("related-request-url-value"));
+        assert!(!text.contains("source-value"));
+    }
+
+    #[tokio::test]
+    async fn detail_page_normalizes_legacy_chatwork_extra_and_flattens_plugin_root() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/tasks/1")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("const legacyChatworkKeys = ["));
+        assert!(text.contains("return { chatwork };"));
+        assert!(text.contains(
+            "if (pluginValue && typeof pluginValue === \"object\" && !Array.isArray(pluginValue))"
+        ));
+        assert!(text.contains("const entries = Object.entries(pluginValue);"));
+        assert!(text.contains("renderJsonTree(`${pluginKey}.${childKey}`, childKey, childValue)"));
+    }
+
+    #[tokio::test]
+    async fn detail_page_renders_plugin_sections_as_accordions() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/tasks/1")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("plugin-section"));
+        assert!(text.contains("plugin-section__summary"));
+        assert!(text.contains("plugin-section__content"));
+        assert!(text.contains("details.open = true;"));
     }
 }
