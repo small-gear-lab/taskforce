@@ -1,0 +1,219 @@
+# Task Model
+
+## Goal
+
+`taskforce` should provide a Taskwarrior-like CLI and local workflow without being tightly coupled to Taskwarrior as a storage backend.
+
+The model should support both:
+
+- a stable standard schema that the CLI and UI can rely on
+- user-defined extensions for project-specific structured fields
+
+## Design principles
+
+- Keep the core task fields explicit and strongly typed.
+- Allow arbitrary extra fields without schema migrations for every new workflow.
+- Preserve a Taskwarrior-like UX where practical, but do not inherit Taskwarrior storage constraints.
+- Make backend replacement possible behind the existing `TaskBackend` abstraction.
+
+## High-level model
+
+Each task consists of:
+
+- core fields
+- annotations
+- extra fields
+
+Suggested shape:
+
+```rust
+pub struct Task {
+    pub id: TaskId,
+    pub core: CoreTaskFields,
+    pub annotations: Vec<Annotation>,
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+```
+
+## Core fields
+
+These fields are part of the standard schema and may be assumed by CLI commands, filters, and the local web UI.
+
+```rust
+pub struct CoreTaskFields {
+    pub title: String,
+    pub status: TaskStatus,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub target_date: Option<NaiveDate>,
+    pub deadline: Option<NaiveDate>,
+    pub launch_date: Option<NaiveDate>,
+    pub target_time_hint: Option<String>,
+    pub deadline_time_hint: Option<String>,
+    pub launch_time_hint: Option<String>,
+    pub project: Option<String>,
+    pub tags: Vec<String>,
+}
+```
+
+Initial `TaskStatus` candidates:
+
+- `pending`
+- `active`
+- `waiting`
+- `done`
+- `deleted`
+
+Why these are core:
+
+- `title` is the primary label in CLI and UI
+- `status` drives default listing behavior
+- timestamps are necessary for sorting and auditability
+- `target_date`, `deadline`, and `launch_date` match the user's real task template needs
+- optional `*_time_hint` fields cover cases like `午前中` or `15:00まで` without forcing full timestamps everywhere
+- `project` and `tags` support Taskwarrior-like grouping
+
+## Annotations
+
+Annotations are standard, structured child records rather than free text embedded in the main description.
+
+```rust
+pub struct Annotation {
+    pub created_at: DateTime<Utc>,
+    pub kind: AnnotationKind,
+    pub body: String,
+}
+```
+
+Initial `AnnotationKind` candidates:
+
+- `note`
+- `progress`
+- `decision`
+- `handover`
+
+This intentionally borrows the usefulness of Taskwarrior annotations without inheriting its storage format.
+
+## Extra fields
+
+Extra fields are user-defined structured fields stored as JSON values.
+
+In the long term, `extra` should be treated as the persisted merged result of extension outputs, not only as a bag of manually entered custom fields.
+
+Examples:
+
+- `requester`
+- `chatwork_url`
+- `room_id`
+- `message_id`
+- `target_sites`
+- `summary`
+- `purpose`
+- `raw_request`
+
+Rules:
+
+- extra field keys must not collide with core field names
+- values may be `string`, `number`, `bool`, `array`, `object`, or `null`
+- CLI support should begin with string-oriented set/get flows, even if storage supports richer JSON
+- importer- or plugin-like features may contribute structured fields before persistence, but the stored shape should still collapse into `extra`
+
+## Extension direction
+
+The system should eventually allow multiple extension producers to enrich a task before persistence.
+
+Examples:
+
+- a Chatwork importer contributes `requester`, `room_id`, `message_id`, `source_url`
+- an urgency calculator contributes derived scheduling metadata
+- a workflow-specific extension contributes `target_sites`, `purpose`, or deployment metadata
+
+The important constraint is that these extension outputs should merge into the final `extra` payload instead of requiring every extension to add new top-level storage columns.
+
+## Storage direction
+
+The preferred long-term backend is SQLite.
+
+Recommended first schema:
+
+- `tasks` table for core fields
+- `task_annotations` table for annotations
+- `extra_json` column on `tasks` for user-defined fields
+
+Why this shape:
+
+- core fields remain queryable and indexable
+- annotations remain append-friendly and easy to filter
+- user extensions do not force frequent migrations
+
+Possible sketch:
+
+```sql
+CREATE TABLE tasks (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  target_date TEXT,
+  deadline TEXT,
+  launch_date TEXT,
+  target_time_hint TEXT,
+  deadline_time_hint TEXT,
+  launch_time_hint TEXT,
+  project TEXT,
+  tags_json TEXT NOT NULL,
+  extra_json TEXT NOT NULL
+);
+
+CREATE TABLE task_annotations (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  body TEXT NOT NULL,
+  FOREIGN KEY(task_id) REFERENCES tasks(id)
+);
+```
+
+## CLI implications
+
+The CLI should stay Taskwarrior-like where it helps:
+
+- `add`
+- `list`
+- `done`
+- `delete`
+- `edit`
+- `next`
+
+Additional commands should support the structured model:
+
+- `annotate`
+- `set <id> <field> <value>`
+- `get <id> <field>`
+- `unset <id> <field>`
+
+Expected behavior:
+
+- core fields have dedicated flags or commands where appropriate
+- extra fields are addressed through `set/get/unset`
+- annotations are first-class instead of being pushed into `description`
+
+## Migration direction
+
+Near-term path:
+
+1. Keep the current `TaskBackend` abstraction.
+2. Treat the existing Taskwarrior implementation as a temporary adapter.
+3. Introduce a new local backend implementing the structured model.
+4. Gradually move CLI and UI behavior to target the new model first.
+
+## Non-goals for the first local backend
+
+- full Taskwarrior storage compatibility
+- multi-user sync
+- remote API design
+- arbitrary schema validation language
+
+The first goal is a local, structured, single-user backend with a Taskwarrior-like CLI surface.
