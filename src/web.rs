@@ -132,7 +132,7 @@ fn render_detail_html() -> String {
             ("__BACK_TO_OPEN_TASKS__", tr("Back to Open Tasks")),
             ("__LOADING_TASK__", tr("Loading task…")),
             ("__DESCRIPTION__", tr("Description")),
-            ("__ORIGINAL_REQUEST__", tr("Original Request")),
+            ("__ORIGINAL_REQUEST__", tr("Description")),
             ("__SCHEDULE__", tr("Schedule")),
             ("__PROJECT_AND_TAGS__", tr("Project & Tags")),
             ("__PROJECT__", tr("Project")),
@@ -261,7 +261,7 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
         </header>
         <div class="grid">
           <section class="column">
-            <div class="section">
+            <div class="section" id="task-description-section" hidden>
               <div class="section-label">__DESCRIPTION__</div>
               <p class="section-body" id="task-description"></p>
             </div>
@@ -385,6 +385,7 @@ mod tests {
                 uuid: "abc".into(),
                 core: CoreTaskFields {
                     title: "Ship MVP".into(),
+                    description: None,
                     status: TaskStatus::Unstarted,
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
@@ -464,6 +465,7 @@ mod tests {
                 uuid: "detail".into(),
                 core: CoreTaskFields {
                     title: "Review scope output".into(),
+                    description: Some("Core description".into()),
                     status: TaskStatus::Active,
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
@@ -527,6 +529,81 @@ mod tests {
         assert!(page_text.contains("/assets/task_detail.css"));
         assert!(page_text.contains("/assets/task_detail.js"));
         assert!(page_text.contains("taskforce-detail-config"));
+    }
+
+    #[tokio::test]
+    async fn detail_page_prefers_plugin_description_over_core_description() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/task_detail.js")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("function effectiveDescription(task, chatwork) {"));
+        assert!(text.contains("return chatwork.description ?? task.core.description;"));
+        assert!(text.contains("effectiveDescription(task, chatwork)"));
+    }
+
+    #[tokio::test]
+    async fn detail_page_hides_description_section_without_effective_description() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/task_detail.js")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains(
+            "const descriptionSection = document.getElementById(\"task-description-section\");"
+        ));
+        assert!(text.contains("descriptionSection.hidden = true;"));
+    }
+
+    #[tokio::test]
+    async fn detail_styles_hide_hidden_sections() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/task_detail.css")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("[hidden] {"));
+        assert!(text.contains("display: none !important;"));
     }
 
     #[tokio::test]

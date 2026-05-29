@@ -82,6 +82,10 @@ function dateLine(date, hint) {
   return [date, hint].filter(Boolean).join(" ");
 }
 
+function effectiveDescription(task, chatwork) {
+  return chatwork.description ?? task.core.description;
+}
+
 function extractInfoBlock(text) {
   if (!text) {
     return null;
@@ -698,6 +702,8 @@ async function loadTask() {
   const schedule = document.getElementById("schedule");
   const tagList = document.getElementById("tag-list");
   const pluginExtraSections = document.getElementById("plugin-extra-sections");
+  const descriptionSection = document.getElementById("task-description-section");
+  const description = effectiveDescription(task, chatwork);
 
   document.title = `${task.core.title} | taskforce`;
   document.getElementById("task-title").textContent = task.core.title;
@@ -705,10 +711,13 @@ async function loadTask() {
     chatwork.abstract || chatwork.summary,
     message("no_abstract_yet", "No abstract yet.")
   );
-  document.getElementById("task-description").textContent = textOrFallback(
-    chatwork.description,
-    message("no_description_yet", "No description yet.")
-  );
+  if (description) {
+    descriptionSection.hidden = false;
+    document.getElementById("task-description").textContent = description;
+  } else {
+    descriptionSection.hidden = true;
+    document.getElementById("task-description").textContent = "";
+  }
   renderOriginalRequest(document.getElementById("task-original-request"), chatwork);
   document.getElementById("project-value").textContent = textOrFallback(
     task.core.project,
