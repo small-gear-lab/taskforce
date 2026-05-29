@@ -1,6 +1,7 @@
 use anyhow::Result;
+use chrono::NaiveDate;
 
-use crate::backend::{Task, TaskBackend};
+use crate::backend::{NewTaskInput, Task, TaskBackend, UpdateTaskInput};
 use crate::cli::{Cli, Commands};
 use crate::config::AppConfig;
 use crate::local_backend::LocalBackend;
@@ -14,12 +15,56 @@ pub async fn run(cli: Cli) -> Result<()> {
             let tasks = client.list_pending()?;
             print_tasks(&tasks);
         }
-        Commands::Add { description } => {
-            let task = client.add(&description)?;
+        Commands::Add {
+            title,
+            target_date,
+            deadline,
+            launch_date,
+            target_time_hint,
+            deadline_time_hint,
+            launch_time_hint,
+            project,
+            tags,
+        } => {
+            let task = client.add(NewTaskInput {
+                title,
+                target_date: parse_optional_date(target_date)?,
+                deadline: parse_optional_date(deadline)?,
+                launch_date: parse_optional_date(launch_date)?,
+                target_time_hint,
+                deadline_time_hint,
+                launch_time_hint,
+                project,
+                tags,
+            })?;
             println!("added {}: {}", task.id_text(), task.title());
         }
-        Commands::Edit { id, description } => {
-            let task = client.edit(id, &description)?;
+        Commands::Edit {
+            id,
+            title,
+            target_date,
+            deadline,
+            launch_date,
+            target_time_hint,
+            deadline_time_hint,
+            launch_time_hint,
+            project,
+            tags,
+        } => {
+            let task = client.edit(
+                id,
+                UpdateTaskInput {
+                    title,
+                    target_date: parse_optional_date(target_date)?,
+                    deadline: parse_optional_date(deadline)?,
+                    launch_date: parse_optional_date(launch_date)?,
+                    target_time_hint,
+                    deadline_time_hint,
+                    launch_time_hint,
+                    project,
+                    tags: (!tags.is_empty()).then_some(tags),
+                },
+            )?;
             println!("updated {}: {}", task.id_text(), task.title());
         }
         Commands::Delete { id } => {
@@ -51,4 +96,13 @@ fn print_tasks(tasks: &[Task]) {
     for task in tasks {
         println!("{} {}", task.id_text(), task.title());
     }
+}
+
+fn parse_optional_date(value: Option<String>) -> Result<Option<NaiveDate>> {
+    value
+        .map(|text| {
+            NaiveDate::parse_from_str(&text, "%Y-%m-%d")
+                .map_err(|err| anyhow::anyhow!("invalid date `{text}`: {err}"))
+        })
+        .transpose()
 }

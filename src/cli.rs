@@ -11,10 +11,51 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     List,
-    Add { description: String },
-    Edit { id: u64, description: String },
-    Delete { id: u64 },
-    Done { id: u64 },
+    Add {
+        title: String,
+        #[arg(long)]
+        target_date: Option<String>,
+        #[arg(long)]
+        deadline: Option<String>,
+        #[arg(long)]
+        launch_date: Option<String>,
+        #[arg(long)]
+        target_time_hint: Option<String>,
+        #[arg(long)]
+        deadline_time_hint: Option<String>,
+        #[arg(long)]
+        launch_time_hint: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long = "tag")]
+        tags: Vec<String>,
+    },
+    Edit {
+        id: u64,
+        title: Option<String>,
+        #[arg(long)]
+        target_date: Option<String>,
+        #[arg(long)]
+        deadline: Option<String>,
+        #[arg(long)]
+        launch_date: Option<String>,
+        #[arg(long)]
+        target_time_hint: Option<String>,
+        #[arg(long)]
+        deadline_time_hint: Option<String>,
+        #[arg(long)]
+        launch_time_hint: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long = "tag")]
+        tags: Vec<String>,
+    },
+    Delete {
+        id: u64,
+    },
+    Done {
+        id: u64,
+    },
     Next,
     Serve,
 }
@@ -27,12 +68,66 @@ mod tests {
 
     #[test]
     fn parses_edit_command() {
-        let cli = Cli::parse_from(["taskforce", "edit", "12", "Rewrite spec"]);
+        let cli = Cli::parse_from([
+            "taskforce",
+            "edit",
+            "12",
+            "Rewrite spec",
+            "--deadline",
+            "2026-06-05",
+            "--tag",
+            "ops",
+        ]);
 
         match cli.command {
-            Commands::Edit { id, description } => {
+            Commands::Edit {
+                id,
+                title,
+                deadline,
+                tags,
+                ..
+            } => {
                 assert_eq!(id, 12);
-                assert_eq!(description, "Rewrite spec");
+                assert_eq!(title.as_deref(), Some("Rewrite spec"));
+                assert_eq!(deadline.as_deref(), Some("2026-06-05"));
+                assert_eq!(tags, vec!["ops"]);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_add_command_with_structured_flags() {
+        let cli = Cli::parse_from([
+            "taskforce",
+            "add",
+            "Rewrite spec",
+            "--target-date",
+            "2026-06-02",
+            "--deadline",
+            "2026-06-05",
+            "--project",
+            "taskforce",
+            "--tag",
+            "ops",
+            "--tag",
+            "release",
+        ]);
+
+        match cli.command {
+            Commands::Add {
+                title,
+                target_date,
+                deadline,
+                project,
+                tags,
+                ..
+            } => {
+                assert_eq!(title, "Rewrite spec");
+                assert_eq!(target_date.as_deref(), Some("2026-06-02"));
+                assert_eq!(deadline.as_deref(), Some("2026-06-05"));
+                assert_eq!(project.as_deref(), Some("taskforce"));
+                assert_eq!(tags, vec!["ops", "release"]);
             }
             other => panic!("unexpected command: {other:?}"),
         }

@@ -33,6 +33,32 @@ pub struct CoreTaskFields {
     pub tags: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct NewTaskInput {
+    pub title: String,
+    pub target_date: Option<NaiveDate>,
+    pub deadline: Option<NaiveDate>,
+    pub launch_date: Option<NaiveDate>,
+    pub target_time_hint: Option<String>,
+    pub deadline_time_hint: Option<String>,
+    pub launch_time_hint: Option<String>,
+    pub project: Option<String>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateTaskInput {
+    pub title: Option<String>,
+    pub target_date: Option<NaiveDate>,
+    pub deadline: Option<NaiveDate>,
+    pub launch_date: Option<NaiveDate>,
+    pub target_time_hint: Option<String>,
+    pub deadline_time_hint: Option<String>,
+    pub launch_time_hint: Option<String>,
+    pub project: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
@@ -106,8 +132,8 @@ impl Task {
 
 pub trait TaskBackend {
     fn list_pending(&self) -> Result<Vec<Task>>;
-    fn add(&self, description: &str) -> Result<Task>;
-    fn edit(&self, id: u64, description: &str) -> Result<Task>;
+    fn add(&self, input: NewTaskInput) -> Result<Task>;
+    fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task>;
     fn delete(&self, id: u64) -> Result<Task>;
     fn mark_done(&self, id: u64) -> Result<Task>;
     fn next_task(&self) -> Result<Option<Task>>;
