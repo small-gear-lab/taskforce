@@ -58,11 +58,13 @@ pub struct CoreTaskFields {
 
 Initial `TaskStatus` candidates:
 
-- `pending`
+- `unstarted`
 - `active`
-- `waiting`
+- `pending`
 - `done`
-- `deleted`
+- `abandoned`
+- `mistaken`
+- `duplicated`
 
 Why these are core:
 
@@ -183,7 +185,9 @@ The CLI should stay task-centric and compact where it helps:
 - `add`
 - `list`
 - `done`
-- `delete`
+- `abandon`
+- `mistake`
+- `duplicate`
 - `edit`
 - `next`
 

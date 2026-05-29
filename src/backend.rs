@@ -71,11 +71,13 @@ pub struct UpdateTaskInput {
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     #[default]
-    Pending,
+    Unstarted,
     Active,
-    Waiting,
+    Pending,
     Done,
-    Deleted,
+    Abandoned,
+    Mistaken,
+    Duplicated,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,7 +105,7 @@ impl Task {
             uuid,
             core: CoreTaskFields {
                 title,
-                status: TaskStatus::Pending,
+                status: TaskStatus::Unstarted,
                 created_at: now,
                 updated_at: now,
                 target_date: None,
@@ -146,7 +148,9 @@ pub trait TaskBackend {
     fn set_extra(&self, id: u64, key: &str, value: Value) -> Result<Task>;
     fn get_extra(&self, id: u64, key: &str) -> Result<Option<Value>>;
     fn unset_extra(&self, id: u64, key: &str) -> Result<Task>;
-    fn delete(&self, id: u64) -> Result<Task>;
     fn mark_done(&self, id: u64) -> Result<Task>;
+    fn mark_abandoned(&self, id: u64) -> Result<Task>;
+    fn mark_mistaken(&self, id: u64) -> Result<Task>;
+    fn mark_duplicated(&self, id: u64) -> Result<Task>;
     fn next_task(&self) -> Result<Option<Task>>;
 }

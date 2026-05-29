@@ -119,8 +119,14 @@ impl TaskBackend for LocalBackend {
               tags_json,
               extra_json
             FROM tasks
-            WHERE status IN ('pending', 'active', 'waiting')
+            WHERE status IN ('unstarted', 'active', 'pending')
             ORDER BY
+              CASE status
+                WHEN 'active' THEN 0
+                WHEN 'unstarted' THEN 1
+                WHEN 'pending' THEN 2
+                ELSE 3
+              END ASC,
               CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
               deadline ASC,
               CASE WHEN target_date IS NULL THEN 1 ELSE 0 END,
@@ -327,12 +333,20 @@ impl TaskBackend for LocalBackend {
         self.fetch_task(id)
     }
 
-    fn delete(&self, id: u64) -> Result<Task> {
-        update_task_status(self, id, TaskStatus::Deleted)
-    }
-
     fn mark_done(&self, id: u64) -> Result<Task> {
         update_task_status(self, id, TaskStatus::Done)
+    }
+
+    fn mark_abandoned(&self, id: u64) -> Result<Task> {
+        update_task_status(self, id, TaskStatus::Abandoned)
+    }
+
+    fn mark_mistaken(&self, id: u64) -> Result<Task> {
+        update_task_status(self, id, TaskStatus::Mistaken)
+    }
+
+    fn mark_duplicated(&self, id: u64) -> Result<Task> {
+        update_task_status(self, id, TaskStatus::Duplicated)
     }
 
     fn next_task(&self) -> Result<Option<Task>> {
@@ -402,22 +416,26 @@ fn json_decode_error(error: impl std::error::Error + Send + Sync + 'static) -> r
 
 fn task_status_text(status: TaskStatus) -> &'static str {
     match status {
-        TaskStatus::Pending => "pending",
+        TaskStatus::Unstarted => "unstarted",
         TaskStatus::Active => "active",
-        TaskStatus::Waiting => "waiting",
+        TaskStatus::Pending => "pending",
         TaskStatus::Done => "done",
-        TaskStatus::Deleted => "deleted",
+        TaskStatus::Abandoned => "abandoned",
+        TaskStatus::Mistaken => "mistaken",
+        TaskStatus::Duplicated => "duplicated",
     }
 }
 
 fn parse_task_status(value: &str) -> TaskStatus {
     match value {
-        "pending" => TaskStatus::Pending,
+        "unstarted" => TaskStatus::Unstarted,
         "active" => TaskStatus::Active,
-        "waiting" => TaskStatus::Waiting,
+        "pending" => TaskStatus::Pending,
         "done" => TaskStatus::Done,
-        "deleted" => TaskStatus::Deleted,
-        _ => TaskStatus::Pending,
+        "abandoned" => TaskStatus::Abandoned,
+        "mistaken" => TaskStatus::Mistaken,
+        "duplicated" => TaskStatus::Duplicated,
+        _ => TaskStatus::Unstarted,
     }
 }
 
@@ -462,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn edit_done_and_delete_task() -> Result<()> {
+    fn edit_done_and_terminal_states() -> Result<()> {
         let backend = LocalBackend::new(unique_db_path("taskforce-local-backend-status"))?;
 
         let added = backend.add(NewTaskInput {
@@ -486,11 +504,25 @@ mod tests {
         assert_eq!(done.core.status, crate::backend::TaskStatus::Done);
 
         let second = backend.add(NewTaskInput {
-            title: "Delete me".into(),
+            title: "Mistaken task".into(),
             ..Default::default()
         })?;
-        let deleted = backend.delete(second.id.expect("id"))?;
-        assert_eq!(deleted.core.status, crate::backend::TaskStatus::Deleted);
+        let mistaken = backend.mark_mistaken(second.id.expect("id"))?;
+        assert_eq!(mistaken.core.status, crate::backend::TaskStatus::Mistaken);
+
+        let third = backend.add(NewTaskInput {
+            title: "Duplicated task".into(),
+            ..Default::default()
+        })?;
+        let duplicated = backend.mark_duplicated(third.id.expect("id"))?;
+        assert_eq!(duplicated.core.status, crate::backend::TaskStatus::Duplicated);
+
+        let fourth = backend.add(NewTaskInput {
+            title: "Abandoned task".into(),
+            ..Default::default()
+        })?;
+        let abandoned = backend.mark_abandoned(fourth.id.expect("id"))?;
+        assert_eq!(abandoned.core.status, crate::backend::TaskStatus::Abandoned);
         Ok(())
     }
 
