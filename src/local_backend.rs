@@ -197,26 +197,50 @@ impl TaskBackend for LocalBackend {
         if let Some(title) = input.title {
             task.core.title = title;
         }
+        if input.clear_target_date {
+            task.core.target_date = None;
+        }
         if let Some(target_date) = input.target_date {
             task.core.target_date = Some(target_date);
+        }
+        if input.clear_deadline {
+            task.core.deadline = None;
         }
         if let Some(deadline) = input.deadline {
             task.core.deadline = Some(deadline);
         }
+        if input.clear_launch_date {
+            task.core.launch_date = None;
+        }
         if let Some(launch_date) = input.launch_date {
             task.core.launch_date = Some(launch_date);
+        }
+        if input.clear_target_time_hint {
+            task.core.target_time_hint = None;
         }
         if let Some(target_time_hint) = input.target_time_hint {
             task.core.target_time_hint = Some(target_time_hint);
         }
+        if input.clear_deadline_time_hint {
+            task.core.deadline_time_hint = None;
+        }
         if let Some(deadline_time_hint) = input.deadline_time_hint {
             task.core.deadline_time_hint = Some(deadline_time_hint);
+        }
+        if input.clear_launch_time_hint {
+            task.core.launch_time_hint = None;
         }
         if let Some(launch_time_hint) = input.launch_time_hint {
             task.core.launch_time_hint = Some(launch_time_hint);
         }
+        if input.clear_project {
+            task.core.project = None;
+        }
         if let Some(project) = input.project {
             task.core.project = Some(project);
+        }
+        if input.clear_tags {
+            task.core.tags = Vec::new();
         }
         if let Some(tags) = input.tags {
             task.core.tags = tags;
@@ -256,6 +280,49 @@ impl TaskBackend for LocalBackend {
         if updated == 0 {
             return Err(anyhow!("task {id} was not found"));
         }
+
+        self.fetch_task(id)
+    }
+
+    fn get_task(&self, id: u64) -> Result<Task> {
+        self.fetch_task(id)
+    }
+
+    fn set_extra(&self, id: u64, key: &str, value: serde_json::Value) -> Result<Task> {
+        let connection = self.connection()?;
+        let mut task = self.fetch_task(id)?;
+        task.extra.insert(key.to_string(), value);
+
+        connection.execute(
+            "UPDATE tasks SET extra_json = ?1, updated_at = ?2 WHERE id = ?3",
+            params![
+                serde_json::to_string(&task.extra)?,
+                Utc::now().to_rfc3339(),
+                id
+            ],
+        )?;
+
+        self.fetch_task(id)
+    }
+
+    fn get_extra(&self, id: u64, key: &str) -> Result<Option<serde_json::Value>> {
+        let task = self.fetch_task(id)?;
+        Ok(task.extra.get(key).cloned())
+    }
+
+    fn unset_extra(&self, id: u64, key: &str) -> Result<Task> {
+        let connection = self.connection()?;
+        let mut task = self.fetch_task(id)?;
+        task.extra.remove(key);
+
+        connection.execute(
+            "UPDATE tasks SET extra_json = ?1, updated_at = ?2 WHERE id = ?3",
+            params![
+                serde_json::to_string(&task.extra)?,
+                Utc::now().to_rfc3339(),
+                id
+            ],
+        )?;
 
         self.fetch_task(id)
     }
@@ -424,6 +491,40 @@ mod tests {
         })?;
         let deleted = backend.delete(second.id.expect("id"))?;
         assert_eq!(deleted.core.status, crate::backend::TaskStatus::Deleted);
+        Ok(())
+    }
+
+    #[test]
+    fn clears_optional_fields_and_updates_extra() -> Result<()> {
+        let backend = LocalBackend::new(unique_db_path("taskforce-local-backend-extra"))?;
+
+        let added = backend.add(NewTaskInput {
+            title: "Structured task".into(),
+            deadline: Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date")),
+            project: Some("taskforce".into()),
+            ..Default::default()
+        })?;
+        let id = added.id.expect("id");
+
+        let edited = backend.edit(
+            id,
+            UpdateTaskInput {
+                clear_deadline: true,
+                clear_project: true,
+                ..Default::default()
+            },
+        )?;
+        assert_eq!(edited.core.deadline, None);
+        assert_eq!(edited.core.project, None);
+
+        backend.set_extra(id, "requester", serde_json::Value::String("ishii".into()))?;
+        assert_eq!(
+            backend.get_extra(id, "requester")?,
+            Some(serde_json::Value::String("ishii".into()))
+        );
+
+        let edited = backend.unset_extra(id, "requester")?;
+        assert!(!edited.extra.contains_key("requester"));
         Ok(())
     }
 

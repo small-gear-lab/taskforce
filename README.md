@@ -58,6 +58,10 @@ taskforce/
 cargo run -- list
 cargo run -- add "Write docs" --deadline 2026-06-05 --project taskforce --tag docs
 cargo run -- edit 1 "Write better docs" --target-date 2026-06-02 --launch-date 2026-06-10
+cargo run -- edit 1 --clear-deadline --clear-project
+cargo run -- set 1 requester ishii
+cargo run -- get 1 requester
+cargo run -- unset 1 requester
 cargo run -- delete 1
 cargo run -- done 1
 TASKFORCE_SQLITE_PATH="$HOME/.local/share/taskforce/taskforce.db" cargo run -- serve

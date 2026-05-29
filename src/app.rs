@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chrono::NaiveDate;
+use serde_json::Value;
 
 use crate::backend::{NewTaskInput, Task, TaskBackend, UpdateTaskInput};
 use crate::cli::{Cli, Commands};
@@ -43,28 +44,62 @@ pub async fn run(cli: Cli) -> Result<()> {
             id,
             title,
             target_date,
+            clear_target_date,
             deadline,
+            clear_deadline,
             launch_date,
+            clear_launch_date,
             target_time_hint,
+            clear_target_time_hint,
             deadline_time_hint,
+            clear_deadline_time_hint,
             launch_time_hint,
+            clear_launch_time_hint,
             project,
+            clear_project,
             tags,
+            clear_tags,
         } => {
             let task = client.edit(
                 id,
                 UpdateTaskInput {
                     title,
                     target_date: parse_optional_date(target_date)?,
+                    clear_target_date,
                     deadline: parse_optional_date(deadline)?,
+                    clear_deadline,
                     launch_date: parse_optional_date(launch_date)?,
+                    clear_launch_date,
                     target_time_hint,
+                    clear_target_time_hint,
                     deadline_time_hint,
+                    clear_deadline_time_hint,
                     launch_time_hint,
+                    clear_launch_time_hint,
                     project,
+                    clear_project,
                     tags: (!tags.is_empty()).then_some(tags),
+                    clear_tags,
                 },
             )?;
+            println!("updated {}: {}", task.id_text(), task.title());
+        }
+        Commands::Set {
+            id,
+            key,
+            value,
+            json,
+        } => {
+            let value = parse_extra_value(value, json)?;
+            let task = client.set_extra(id, &key, value)?;
+            println!("updated {}: {}", task.id_text(), task.title());
+        }
+        Commands::Get { id, key } => match client.get_extra(id, &key)? {
+            Some(value) => println!("{}", serde_json::to_string_pretty(&value)?),
+            None => println!("null"),
+        },
+        Commands::Unset { id, key } => {
+            let task = client.unset_extra(id, &key)?;
             println!("updated {}: {}", task.id_text(), task.title());
         }
         Commands::Delete { id } => {
@@ -105,4 +140,12 @@ fn parse_optional_date(value: Option<String>) -> Result<Option<NaiveDate>> {
                 .map_err(|err| anyhow::anyhow!("invalid date `{text}`: {err}"))
         })
         .transpose()
+}
+
+fn parse_extra_value(value: String, json: bool) -> Result<Value> {
+    if json {
+        Ok(serde_json::from_str(&value)?)
+    } else {
+        Ok(Value::String(value))
+    }
 }

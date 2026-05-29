@@ -272,6 +272,27 @@ mod tests {
             unreachable!("not used in web tests")
         }
 
+        fn get_task(&self, _id: u64) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        fn set_extra(
+            &self,
+            _id: u64,
+            _key: &str,
+            _value: serde_json::Value,
+        ) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        fn get_extra(&self, _id: u64, _key: &str) -> anyhow::Result<Option<serde_json::Value>> {
+            unreachable!("not used in web tests")
+        }
+
+        fn unset_extra(&self, _id: u64, _key: &str) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
         fn delete(&self, _id: u64) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }

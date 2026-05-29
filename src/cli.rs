@@ -36,19 +36,50 @@ pub enum Commands {
         #[arg(long)]
         target_date: Option<String>,
         #[arg(long)]
+        clear_target_date: bool,
+        #[arg(long)]
         deadline: Option<String>,
+        #[arg(long)]
+        clear_deadline: bool,
         #[arg(long)]
         launch_date: Option<String>,
         #[arg(long)]
+        clear_launch_date: bool,
+        #[arg(long)]
         target_time_hint: Option<String>,
+        #[arg(long)]
+        clear_target_time_hint: bool,
         #[arg(long)]
         deadline_time_hint: Option<String>,
         #[arg(long)]
+        clear_deadline_time_hint: bool,
+        #[arg(long)]
         launch_time_hint: Option<String>,
         #[arg(long)]
+        clear_launch_time_hint: bool,
+        #[arg(long)]
         project: Option<String>,
+        #[arg(long)]
+        clear_project: bool,
         #[arg(long = "tag")]
         tags: Vec<String>,
+        #[arg(long)]
+        clear_tags: bool,
+    },
+    Set {
+        id: u64,
+        key: String,
+        value: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Get {
+        id: u64,
+        key: String,
+    },
+    Unset {
+        id: u64,
+        key: String,
     },
     Delete {
         id: u64,
@@ -84,12 +115,14 @@ mod tests {
                 id,
                 title,
                 deadline,
+                clear_deadline,
                 tags,
                 ..
             } => {
                 assert_eq!(id, 12);
                 assert_eq!(title.as_deref(), Some("Rewrite spec"));
                 assert_eq!(deadline.as_deref(), Some("2026-06-05"));
+                assert!(!clear_deadline);
                 assert_eq!(tags, vec!["ops"]);
             }
             other => panic!("unexpected command: {other:?}"),
@@ -139,6 +172,33 @@ mod tests {
 
         match cli.command {
             Commands::Delete { id } => assert_eq!(id, 7),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_set_command_with_json_flag() {
+        let cli = Cli::parse_from([
+            "taskforce",
+            "set",
+            "7",
+            "target_sites",
+            "[\"a\",\"b\"]",
+            "--json",
+        ]);
+
+        match cli.command {
+            Commands::Set {
+                id,
+                key,
+                value,
+                json,
+            } => {
+                assert_eq!(id, 7);
+                assert_eq!(key, "target_sites");
+                assert_eq!(value, "[\"a\",\"b\"]");
+                assert!(json);
+            }
             other => panic!("unexpected command: {other:?}"),
         }
     }
