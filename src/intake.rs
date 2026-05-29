@@ -1,8 +1,11 @@
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use crate::backend::{Annotation, NewTaskInput};
+use crate::plugin::{PluginExtra, PluginId};
+
+const CHATWORK_PLUGIN_ID: PluginId = "chatwork";
 
 #[derive(Debug, Clone)]
 pub struct ChatworkMessage {
@@ -18,11 +21,12 @@ pub struct ChatworkMessage {
 #[derive(Debug, Clone, Default)]
 pub struct TaskDraft {
     pub input: NewTaskInput,
-    pub extra: Map<String, Value>,
+    pub extra: PluginExtra,
     pub annotations: Vec<Annotation>,
 }
 
 pub trait TaskDraftPlugin {
+    fn plugin_id(&self) -> PluginId;
     fn apply(&self, message: &ChatworkMessage, draft: &mut TaskDraft) -> Result<()>;
 }
 
@@ -30,9 +34,14 @@ pub trait TaskDraftPlugin {
 pub struct ChatworkSourcePlugin;
 
 impl TaskDraftPlugin for ChatworkSourcePlugin {
+    fn plugin_id(&self) -> PluginId {
+        CHATWORK_PLUGIN_ID
+    }
+
     fn apply(&self, message: &ChatworkMessage, draft: &mut TaskDraft) -> Result<()> {
         draft.extra.insert(
-            "source".into(),
+            self.plugin_id(),
+            "source",
             json!({
                 "kind": "chatwork",
                 "room_id": message.room_id,
@@ -54,6 +63,10 @@ impl TaskDraftPlugin for ChatworkSourcePlugin {
 pub struct CompanyRequestTemplatePlugin;
 
 impl TaskDraftPlugin for CompanyRequestTemplatePlugin {
+    fn plugin_id(&self) -> PluginId {
+        CHATWORK_PLUGIN_ID
+    }
+
     fn apply(&self, message: &ChatworkMessage, draft: &mut TaskDraft) -> Result<()> {
         let sections = parse_sections(&message.body);
 
@@ -72,7 +85,8 @@ impl TaskDraftPlugin for CompanyRequestTemplatePlugin {
 
         if let Some(lines) = sections.get("改修概要") {
             draft.extra.insert(
-                "summary".into(),
+                self.plugin_id(),
+                "summary",
                 Value::String(lines.join("\n").trim().to_string()),
             );
         }
@@ -80,49 +94,58 @@ impl TaskDraftPlugin for CompanyRequestTemplatePlugin {
         if let Some(lines) = sections.get("依頼主")
             && let Some(requester) = first_nonempty_line(lines)
         {
-            draft
-                .extra
-                .insert("requester".into(), Value::String(requester.to_string()));
+            draft.extra.insert(
+                self.plugin_id(),
+                "requester",
+                Value::String(requester.to_string()),
+            );
         }
 
         if let Some(lines) = sections.get("過去の依頼(類似依頼)チャット")
             && let Some(url) = first_nonempty_line(lines)
         {
-            draft
-                .extra
-                .insert("related_request_url".into(), Value::String(url.to_string()));
+            draft.extra.insert(
+                self.plugin_id(),
+                "related_request_url",
+                Value::String(url.to_string()),
+            );
         }
 
         if let Some(lines) = sections.get("対象サイト") {
             draft.extra.insert(
-                "target_sites".into(),
+                self.plugin_id(),
+                "target_sites",
                 Value::Array(parse_target_sites(lines)),
             );
         }
 
         if let Some(lines) = sections.get("改修内容") {
             draft.extra.insert(
-                "details".into(),
+                self.plugin_id(),
+                "description",
                 Value::String(lines.join("\n").trim().to_string()),
             );
         }
 
         if let Some(lines) = sections.get("改修目的") {
             draft.extra.insert(
-                "purpose".into(),
+                self.plugin_id(),
+                "abstract",
                 Value::String(lines.join("\n").trim().to_string()),
             );
         }
 
         if let Some(lines) = sections.get("本番反映") {
             draft.extra.insert(
-                "production_rollout".into(),
+                self.plugin_id(),
+                "production_rollout",
                 Value::String(lines.join("\n").trim().to_string()),
             );
         }
 
         draft.extra.insert(
-            "template_kind".into(),
+            self.plugin_id(),
+            "template_kind",
             Value::String("company_request".into()),
         );
 
@@ -327,17 +350,17 @@ https://www.chatwork.com/#!rid36219958-1737709065104039936
             chrono::NaiveDate::from_ymd_opt(2026, 6, 5)
         );
         assert_eq!(
-            draft.extra.get("requester"),
+            draft.extra.get("chatwork", "requester"),
             Some(&Value::String("佐藤".into()))
         );
         assert_eq!(
-            draft.extra.get("template_kind"),
+            draft.extra.get("chatwork", "template_kind"),
             Some(&Value::String("company_request".into()))
         );
         assert_eq!(
             draft
                 .extra
-                .get("target_sites")
+                .get("chatwork", "target_sites")
                 .and_then(Value::as_array)
                 .map(Vec::len),
             Some(8)
@@ -345,7 +368,7 @@ https://www.chatwork.com/#!rid36219958-1737709065104039936
         assert_eq!(
             draft
                 .extra
-                .get("source")
+                .get("chatwork", "source")
                 .and_then(Value::as_object)
                 .and_then(|source| source.get("kind"))
                 .and_then(Value::as_str),
