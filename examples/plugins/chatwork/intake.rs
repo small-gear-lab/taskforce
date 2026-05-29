@@ -3,7 +3,7 @@ use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use serde_json::{Value, json};
 
 use crate::backend::{Annotation, NewTaskInput};
-use crate::plugin::{PluginExtra, PluginId};
+use crate::plugin::{PluginExtra, PluginId, RenderBlock};
 
 const CHATWORK_PLUGIN_ID: PluginId = "chatwork";
 
@@ -55,6 +55,16 @@ impl TaskDraftPlugin for ChatworkSourcePlugin {
                 "sent_at": message.sent_at.to_rfc3339(),
                 "body_raw": message.body,
             }),
+        );
+        draft.extra.insert(
+            self.plugin_id(),
+            "render_blocks",
+            Value::Array(
+                parse_chatwork_render_blocks(&message.body)
+                    .into_iter()
+                    .map(RenderBlock::into_value)
+                    .collect(),
+            ),
         );
         Ok(())
     }
@@ -281,12 +291,168 @@ fn parse_target_sites(lines: &[String]) -> Vec<Value> {
         .collect()
 }
 
+fn parse_chatwork_render_blocks(body: &str) -> Vec<RenderBlock> {
+    parse_render_blocks(body, None).0
+}
+
+fn parse_render_blocks(text: &str, terminator: Option<&str>) -> (Vec<RenderBlock>, usize) {
+    let mut blocks = Vec::new();
+    let mut index = 0;
+
+    while index < text.len() {
+        let rest = &text[index..];
+
+        if let Some(tag) = terminator
+            && rest.starts_with(tag)
+        {
+            return (blocks, index);
+        }
+
+        if rest.starts_with("[info]") {
+            let (block, consumed) = parse_info_block(rest);
+            blocks.push(block);
+            index += consumed;
+            continue;
+        }
+
+        if rest.starts_with("[code]") {
+            let (block, consumed) = parse_code_block(rest);
+            blocks.push(block);
+            index += consumed;
+            continue;
+        }
+
+        if rest.starts_with("[qt]") {
+            let (block, consumed) = parse_quote_block(rest);
+            blocks.push(block);
+            index += consumed;
+            continue;
+        }
+
+        if rest.starts_with("[hr]") {
+            blocks.push(RenderBlock::rule());
+            index += "[hr]".len();
+            continue;
+        }
+
+        let next_index = find_next_markup(rest, terminator);
+        push_text_block(&mut blocks, &rest[..next_index]);
+        index += next_index;
+    }
+
+    (blocks, index)
+}
+
+fn parse_info_block(text: &str) -> (RenderBlock, usize) {
+    let mut index = "[info]".len();
+    while let Some(ch) = text[index..].chars().next() {
+        if ch.is_whitespace() {
+            index += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    let mut title = None;
+    if text[index..].starts_with("[title]")
+        && let Some(end_index) = text[index + "[title]".len()..].find("[/title]")
+    {
+        let title_start = index + "[title]".len();
+        let title_end = title_start + end_index;
+        title = Some(text[title_start..title_end].trim().to_string());
+        index = title_end + "[/title]".len();
+    }
+
+    let (mut children, inner_end) = parse_render_blocks(&text[index..], Some("[/info]"));
+    let mut body_text = String::new();
+    if matches!(children.first(), Some(first) if first.kind == crate::plugin::RenderBlockKind::Text)
+    {
+        let first = children.remove(0);
+        body_text = first.text;
+    }
+
+    let close_offset = index + inner_end;
+    let consumed = if text[close_offset..].starts_with("[/info]") {
+        close_offset + "[/info]".len()
+    } else {
+        text.len()
+    };
+
+    (RenderBlock::info(title, body_text, children), consumed)
+}
+
+fn parse_code_block(text: &str) -> (RenderBlock, usize) {
+    if let Some(end_index) = text["[code]".len()..].find("[/code]") {
+        let code_start = "[code]".len();
+        let code_end = code_start + end_index;
+        let consumed = code_end + "[/code]".len();
+        return (
+            RenderBlock::code(text[code_start..code_end].trim()),
+            consumed,
+        );
+    }
+
+    (RenderBlock::code(text.trim()), text.len())
+}
+
+fn parse_quote_block(text: &str) -> (RenderBlock, usize) {
+    let inner_start = "[qt]".len();
+    let (mut children, inner_end) = parse_render_blocks(&text[inner_start..], Some("[/qt]"));
+    let mut body_text = String::new();
+    if matches!(children.first(), Some(first) if first.kind == crate::plugin::RenderBlockKind::Text)
+    {
+        let first = children.remove(0);
+        body_text = first.text;
+    }
+
+    let close_offset = inner_start + inner_end;
+    let consumed = if text[close_offset..].starts_with("[/qt]") {
+        close_offset + "[/qt]".len()
+    } else {
+        text.len()
+    };
+
+    (RenderBlock::quote(body_text, children), consumed)
+}
+
+fn find_next_markup(text: &str, terminator: Option<&str>) -> usize {
+    let mut indexes = Vec::new();
+    if let Some(index) = text.find("[info]") {
+        indexes.push(index);
+    }
+    if let Some(index) = text.find("[code]") {
+        indexes.push(index);
+    }
+    if let Some(index) = text.find("[qt]") {
+        indexes.push(index);
+    }
+    if let Some(index) = text.find("[hr]") {
+        indexes.push(index);
+    }
+    if let Some(tag) = terminator
+        && let Some(index) = text.find(tag)
+    {
+        indexes.push(index);
+    }
+
+    indexes.into_iter().min().unwrap_or(text.len())
+}
+
+fn push_text_block(blocks: &mut Vec<RenderBlock>, text: &str) {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    blocks.push(RenderBlock::text(trimmed));
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
     use serde_json::Value;
 
-    use super::{ChatworkMessage, build_draft_from_chatwork};
+    use super::{ChatworkMessage, build_draft_from_chatwork, parse_chatwork_render_blocks};
 
     const SAMPLE_BODY: &str = r#"[To:6023559] 石井将輝さん
 #/batch/update_master.bash 正常に動作するようにする
@@ -381,5 +547,182 @@ https://www.chatwork.com/#!rid36219958-1737709065104039936
                 .and_then(Value::as_str),
             Some("chatwork")
         );
+        assert_eq!(
+            draft
+                .extra
+                .get("chatwork", "render_blocks")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            draft
+                .extra
+                .get("chatwork", "render_blocks")
+                .and_then(Value::as_array)
+                .and_then(|blocks| blocks.get(1))
+                .and_then(|block| block.get("children"))
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn parses_chatwork_render_blocks_for_info_and_code() {
+        let body = r#"導入文です。
+
+[info][title]改修依頼[/title]
+詳細本文です。
+[/info]
+
+[code]
+echo "hello"
+[/code]
+"#;
+
+        let blocks = parse_chatwork_render_blocks(body);
+
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks[0].kind.as_str(), "text");
+        assert_eq!(blocks[0].text, "導入文です。");
+        assert_eq!(blocks[1].kind.as_str(), "info");
+        assert_eq!(blocks[1].title.as_deref(), Some("改修依頼"));
+        assert_eq!(blocks[1].text, "詳細本文です。");
+        assert!(blocks[1].children.is_empty());
+        assert_eq!(blocks[2].kind.as_str(), "code");
+        assert_eq!(blocks[2].text, "echo \"hello\"");
+    }
+
+    #[test]
+    fn parses_nested_info_and_code_inside_info() {
+        let body = r#"[info][title]親[/title]
+前置きです。
+[info][title]子[/title]
+内側です。
+[/info]
+[code]
+echo "[info]literal[/info]"
+[/code]
+[/info]"#;
+
+        let blocks = parse_chatwork_render_blocks(body);
+
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind.as_str(), "info");
+        assert_eq!(blocks[0].title.as_deref(), Some("親"));
+        assert_eq!(blocks[0].text, "前置きです。");
+        assert_eq!(blocks[0].children.len(), 2);
+        assert_eq!(blocks[0].children[0].kind.as_str(), "info");
+        assert_eq!(blocks[0].children[0].title.as_deref(), Some("子"));
+        assert_eq!(blocks[0].children[0].text, "内側です。");
+        assert_eq!(blocks[0].children[1].kind.as_str(), "code");
+        assert_eq!(blocks[0].children[1].text, "echo \"[info]literal[/info]\"");
+    }
+
+    #[test]
+    fn parses_quote_and_rule_blocks() {
+        let body = r#"導入文です。
+[qt]
+引用本文です。
+[/qt]
+[hr]
+[code]
+echo "hello"
+[/code]
+"#;
+
+        let blocks = parse_chatwork_render_blocks(body);
+
+        assert_eq!(blocks.len(), 4);
+        assert_eq!(blocks[0].kind.as_str(), "text");
+        assert_eq!(blocks[1].kind.as_str(), "quote");
+        assert_eq!(blocks[1].text, "引用本文です。");
+        assert!(blocks[1].children.is_empty());
+        assert_eq!(blocks[2].kind.as_str(), "rule");
+        assert_eq!(blocks[3].kind.as_str(), "code");
+    }
+
+    #[test]
+    fn parses_quote_and_rule_inside_info() {
+        let body = r#"[info][title]親[/title]
+前置きです。
+[qt]
+引用本文です。
+[/qt]
+[hr]
+[/info]"#;
+
+        let blocks = parse_chatwork_render_blocks(body);
+
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind.as_str(), "info");
+        assert_eq!(blocks[0].text, "前置きです。");
+        assert_eq!(blocks[0].children.len(), 2);
+        assert_eq!(blocks[0].children[0].kind.as_str(), "quote");
+        assert_eq!(blocks[0].children[0].text, "引用本文です。");
+        assert_eq!(blocks[0].children[1].kind.as_str(), "rule");
+    }
+
+    #[test]
+    fn parses_nested_blocks_inside_quote() {
+        let body = r#"[qt]
+前置きです。
+[info][title]補足[/title]
+引用内の情報です。
+[/info]
+[code]
+echo "nested"
+[/code]
+[/qt]"#;
+
+        let blocks = parse_chatwork_render_blocks(body);
+
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind.as_str(), "quote");
+        assert_eq!(blocks[0].text, "前置きです。");
+        assert_eq!(blocks[0].children.len(), 2);
+        assert_eq!(blocks[0].children[0].kind.as_str(), "info");
+        assert_eq!(blocks[0].children[0].title.as_deref(), Some("補足"));
+        assert_eq!(blocks[0].children[0].text, "引用内の情報です。");
+        assert_eq!(blocks[0].children[1].kind.as_str(), "code");
+        assert_eq!(blocks[0].children[1].text, "echo \"nested\"");
+    }
+
+    #[test]
+    fn parses_nested_quote_inside_quote() {
+        let body = r#"[qt]
+外側の引用です。
+[qt]
+内側の引用です。
+[info][title]内側メモ[/title]
+内側の補足です。
+[/info]
+[code]
+echo "deep"
+[/code]
+[/qt]
+[/qt]"#;
+
+        let blocks = parse_chatwork_render_blocks(body);
+
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind.as_str(), "quote");
+        assert_eq!(blocks[0].text, "外側の引用です。");
+        assert_eq!(blocks[0].children.len(), 1);
+        assert_eq!(blocks[0].children[0].kind.as_str(), "quote");
+        assert_eq!(blocks[0].children[0].text, "内側の引用です。");
+        assert_eq!(blocks[0].children[0].children.len(), 2);
+        assert_eq!(blocks[0].children[0].children[0].kind.as_str(), "info");
+        assert_eq!(
+            blocks[0].children[0].children[0].title.as_deref(),
+            Some("内側メモ")
+        );
+        assert_eq!(
+            blocks[0].children[0].children[0].text,
+            "内側の補足です。"
+        );
+        assert_eq!(blocks[0].children[0].children[1].kind.as_str(), "code");
+        assert_eq!(blocks[0].children[0].children[1].text, "echo \"deep\"");
     }
 }

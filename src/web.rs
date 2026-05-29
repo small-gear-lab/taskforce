@@ -133,8 +133,6 @@ fn render_detail_html() -> String {
             ("__LOADING_TASK__", tr("Loading task…")),
             ("__DESCRIPTION__", tr("Description")),
             ("__ORIGINAL_REQUEST__", tr("Original Request")),
-            ("__SCOPE__", tr("Scope")),
-            ("__NO_SCOPE_DETAILS__", tr("No scope details.")),
             ("__SCHEDULE__", tr("Schedule")),
             ("__PROJECT_AND_TAGS__", tr("Project & Tags")),
             ("__PROJECT__", tr("Project")),
@@ -193,7 +191,6 @@ fn detail_config_json() -> String {
             "task_could_not_be_loaded": tr("The requested task could not be loaded."),
             "no_project": tr("no project"),
             "no_tags": tr("No tags."),
-            "unknown_target": tr("Unknown target"),
             "no_extra_data": tr("No extra data."),
             "no_original_request": tr("Original request text is not available."),
         },
@@ -270,12 +267,7 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
             </div>
             <div class="section">
               <div class="section-label">__ORIGINAL_REQUEST__</div>
-              <p class="section-body" id="task-original-request"></p>
-            </div>
-            <div class="section">
-              <div class="section-label">__SCOPE__</div>
-              <div class="scope-list" id="scope-list"></div>
-              <div class="empty" id="scope-empty" hidden>__NO_SCOPE_DETAILS__</div>
+              <div class="section-body" id="task-original-request"></div>
             </div>
           </section>
           <aside class="column">
@@ -642,6 +634,111 @@ mod tests {
 
         assert!(text.contains("const chatwork = normalizeChatworkExtra(task.extra) ?? {};"));
         assert!(text.contains("delete filtered.source;"));
-        assert!(text.contains("extractInfoBlock(source.body_raw)"));
+        assert!(text.contains("return parseChatworkRenderBlocks(source.body_raw);"));
+    }
+
+    #[tokio::test]
+    async fn detail_page_prefers_render_blocks_for_original_request_and_hides_them_from_tree() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/task_detail.js")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("delete filtered.render_blocks;"));
+        assert!(text.contains("chatwork.render_blocks"));
+        assert!(text.contains("renderOriginalRequest("));
+    }
+
+    #[tokio::test]
+    async fn detail_page_links_external_urls_in_metadata_and_request_body() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/task_detail.js")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("function isUrlFieldPath(path) {"));
+        assert!(text.contains("function appendLinkifiedText(container, text) {"));
+        assert!(text.contains("link.target = \"_blank\";"));
+        assert!(text.contains("link.rel = \"noopener noreferrer\";"));
+    }
+
+    #[tokio::test]
+    async fn detail_page_supports_quote_and_rule_render_blocks() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/task_detail.js")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("if (rest.startsWith(\"[qt]\")) {"));
+        assert!(text.contains("if (rest.startsWith(\"[hr]\")) {"));
+        assert!(text.contains("kind: \"quote\""));
+        assert!(text.contains("kind: \"rule\""));
+        assert!(text.contains("block.kind === \"quote\""));
+        assert!(text.contains("block.kind === \"rule\""));
+    }
+
+    #[tokio::test]
+    async fn detail_page_supports_nested_children_inside_quote_blocks() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/task_detail.js")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(text.contains("children: [],"));
+        assert!(text.contains("if (Array.isArray(block.children) && block.children.length > 0) {"));
+        assert!(text.contains("quote.appendChild(children);"));
+        assert!(text.contains("children.className = \"request-block__children\";"));
     }
 }

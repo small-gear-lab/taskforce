@@ -1,4 +1,4 @@
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 pub type PluginId = &'static str;
 
@@ -6,6 +6,95 @@ pub type PluginId = &'static str;
 pub struct LogicalFieldLabel {
     pub physical_path: &'static str,
     pub msgid: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderBlockKind {
+    Text,
+    Info,
+    Code,
+    Quote,
+    Rule,
+}
+
+impl RenderBlockKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Info => "info",
+            Self::Code => "code",
+            Self::Quote => "quote",
+            Self::Rule => "rule",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderBlock {
+    pub kind: RenderBlockKind,
+    pub title: Option<String>,
+    pub text: String,
+    pub children: Vec<RenderBlock>,
+}
+
+impl RenderBlock {
+    pub fn text(text: impl Into<String>) -> Self {
+        Self {
+            kind: RenderBlockKind::Text,
+            title: None,
+            text: text.into(),
+            children: Vec::new(),
+        }
+    }
+
+    pub fn info(
+        title: Option<String>,
+        text: impl Into<String>,
+        children: Vec<RenderBlock>,
+    ) -> Self {
+        Self {
+            kind: RenderBlockKind::Info,
+            title,
+            text: text.into(),
+            children,
+        }
+    }
+
+    pub fn code(text: impl Into<String>) -> Self {
+        Self {
+            kind: RenderBlockKind::Code,
+            title: None,
+            text: text.into(),
+            children: Vec::new(),
+        }
+    }
+
+    pub fn quote(text: impl Into<String>, children: Vec<RenderBlock>) -> Self {
+        Self {
+            kind: RenderBlockKind::Quote,
+            title: None,
+            text: text.into(),
+            children,
+        }
+    }
+
+    pub fn rule() -> Self {
+        Self {
+            kind: RenderBlockKind::Rule,
+            title: None,
+            text: String::new(),
+            children: Vec::new(),
+        }
+    }
+
+    pub fn into_value(self) -> Value {
+        json!({
+            "kind": self.kind.as_str(),
+            "title": self.title,
+            "text": self.text,
+            "children": self.children.into_iter().map(Self::into_value).collect::<Vec<_>>(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -55,7 +144,7 @@ pub fn logical_field_labels() -> &'static [LogicalFieldLabel] {
 mod tests {
     use serde_json::Value;
 
-    use super::PluginExtra;
+    use super::{PluginExtra, RenderBlock};
 
     #[test]
     fn stores_values_under_plugin_namespaces() {
@@ -76,5 +165,60 @@ mod tests {
             Some(&Value::String("company_request".into()))
         );
         assert!(extra.get_namespace("missing").is_none());
+    }
+
+    #[test]
+    fn render_block_serializes_into_expected_shape() {
+        assert_eq!(
+            RenderBlock::info(
+                Some("改修依頼".into()),
+                "詳細本文",
+                vec![RenderBlock::code("echo hello")],
+            )
+            .into_value(),
+            serde_json::json!({
+                "kind": "info",
+                "title": "改修依頼",
+                "text": "詳細本文",
+                "children": [{
+                    "kind": "code",
+                    "title": null,
+                    "text": "echo hello",
+                    "children": [],
+                }],
+            })
+        );
+        assert_eq!(
+            RenderBlock::code("echo hello").into_value(),
+            serde_json::json!({
+                "kind": "code",
+                "title": null,
+                "text": "echo hello",
+                "children": [],
+            })
+        );
+        assert_eq!(
+            RenderBlock::quote("quoted", vec![RenderBlock::code("echo nested")]).into_value(),
+            serde_json::json!({
+                "kind": "quote",
+                "title": null,
+                "text": "quoted",
+                "children": [{
+                    "kind": "code",
+                    "title": null,
+                    "text": "echo nested",
+                    "children": [],
+                }],
+            })
+        );
+        assert_eq!(
+            RenderBlock::rule().into_value(),
+            serde_json::json!({
+                "kind": "rule",
+                "title": null,
+                "text": "",
+                "children": [],
+            })
+        );
     }
 }
