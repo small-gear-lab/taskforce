@@ -51,7 +51,9 @@ taskforce/
 
 - Install Taskwarrior separately and make the `task` binary available either via `PATH` or `task_bin` in config.
 - A sample config is available at `config/config.toml.sample`.
+- A sample environment file is available at `config/taskforce.env.sample`.
 - Copy it to `$XDG_CONFIG_HOME/taskforce/config.toml`, or `~/.config/taskforce/config.toml` if `XDG_CONFIG_HOME` is unset.
+- For env-based overrides, copy `config/taskforce.env.sample` to `$XDG_CONFIG_HOME/taskforce/taskforce.env`.
 
 ## Current commands
 
@@ -65,3 +67,23 @@ TASKFORCE_TASK_BIN="$HOME/.local/opt/taskwarrior/bin/task" cargo run -- serve
 ```
 
 - `serve` binds to `127.0.0.1` and chooses a free port unless a host or port is configured.
+- Manual runs also load `taskforce.env` automatically when it exists in the XDG config directory.
+
+## systemd user service
+
+- Build a release binary before wiring the service:
+
+```bash
+cargo build --release
+```
+
+- If you want a stable local URL, set `[server].port` in your config before enabling the service.
+- A sample user unit is available at `config/systemd/taskforce.service`.
+- The sample unit reads `~/.config/taskforce/taskforce.env` via `EnvironmentFile=`.
+- Install it under `~/.config/systemd/user/taskforce.service`, then run:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now taskforce.service
+systemctl --user status taskforce.service
+```
