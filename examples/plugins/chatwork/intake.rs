@@ -137,6 +137,9 @@ impl TaskDraftPlugin for CompanyRequestTemplatePlugin {
         }
 
         if let Some(lines) = sections.get("改修内容") {
+            if draft.input.description.is_none() {
+                draft.input.description = Some(lines.join("\n").trim().to_string());
+            }
             draft.extra.insert(
                 self.plugin_id(),
                 "description",
@@ -718,10 +721,7 @@ echo "deep"
             blocks[0].children[0].children[0].title.as_deref(),
             Some("内側メモ")
         );
-        assert_eq!(
-            blocks[0].children[0].children[0].text,
-            "内側の補足です。"
-        );
+        assert_eq!(blocks[0].children[0].children[0].text, "内側の補足です。");
         assert_eq!(blocks[0].children[0].children[1].kind.as_str(), "code");
         assert_eq!(blocks[0].children[0].children[1].text, "echo \"deep\"");
     }

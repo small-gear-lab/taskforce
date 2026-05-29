@@ -38,6 +38,7 @@ impl LocalBackend {
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               uuid TEXT NOT NULL UNIQUE,
               title TEXT NOT NULL,
+              description TEXT,
               status_id INTEGER NOT NULL,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL,
@@ -65,6 +66,7 @@ impl LocalBackend {
         )?;
         seed_task_statuses(&connection)?;
         migrate_legacy_status_column(&connection)?;
+        migrate_description_column(&connection)?;
         Ok(())
     }
 
@@ -81,6 +83,7 @@ impl LocalBackend {
               tasks.id,
               tasks.uuid,
               tasks.title,
+              tasks.description,
               task_statuses.name,
               tasks.created_at,
               tasks.updated_at,
@@ -115,6 +118,7 @@ impl TaskBackend for LocalBackend {
               tasks.id,
               tasks.uuid,
               tasks.title,
+              tasks.description,
               task_statuses.name,
               tasks.created_at,
               tasks.updated_at,
@@ -152,6 +156,7 @@ impl TaskBackend for LocalBackend {
 
     fn add(&self, input: NewTaskInput) -> Result<Task> {
         let mut task = Task::new(None, generate_local_uuid(), input.title);
+        task.core.description = input.description;
         task.core.target_date = input.target_date;
         task.core.deadline = input.deadline;
         task.core.launch_date = input.launch_date;
@@ -169,6 +174,7 @@ impl TaskBackend for LocalBackend {
             INSERT INTO tasks (
               uuid,
               title,
+              description,
               status_id,
               created_at,
               updated_at,
@@ -181,11 +187,12 @@ impl TaskBackend for LocalBackend {
               project,
               tags_json,
               extra_json
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             "#,
             params![
                 task.uuid,
                 task.core.title,
+                task.core.description,
                 task_status_id(task.core.status),
                 task.core.created_at.to_rfc3339(),
                 task.core.updated_at.to_rfc3339(),
@@ -212,6 +219,9 @@ impl TaskBackend for LocalBackend {
 
         if let Some(title) = input.title {
             task.core.title = title;
+        }
+        if let Some(description) = input.description {
+            task.core.description = Some(description);
         }
         if input.clear_target_date {
             task.core.target_date = None;
@@ -267,20 +277,22 @@ impl TaskBackend for LocalBackend {
             r#"
             UPDATE tasks
             SET title = ?1,
-                status_id = ?2,
-                updated_at = ?3,
-                target_date = ?4,
-                deadline = ?5,
-                launch_date = ?6,
-                target_time_hint = ?7,
-                deadline_time_hint = ?8,
-                launch_time_hint = ?9,
-                project = ?10,
-                tags_json = ?11
-            WHERE id = ?12
+                description = ?2,
+                status_id = ?3,
+                updated_at = ?4,
+                target_date = ?5,
+                deadline = ?6,
+                launch_date = ?7,
+                target_time_hint = ?8,
+                deadline_time_hint = ?9,
+                launch_time_hint = ?10,
+                project = ?11,
+                tags_json = ?12
+            WHERE id = ?13
             "#,
             params![
                 task.core.title,
+                task.core.description,
                 task_status_id(task.core.status),
                 now,
                 task.core.target_date.map(|value| value.to_string()),
@@ -381,8 +393,8 @@ fn update_task_status(backend: &LocalBackend, id: u64, status: TaskStatus) -> Re
 }
 
 fn map_task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
-    let tags_json: String = row.get(13)?;
-    let extra_json: String = row.get(14)?;
+    let tags_json: String = row.get(14)?;
+    let extra_json: String = row.get(15)?;
 
     let tags = serde_json::from_str(&tags_json).map_err(json_decode_error)?;
     let extra: Map<String, serde_json::Value> =
@@ -393,16 +405,17 @@ fn map_task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
         uuid: row.get(1)?,
         core: crate::backend::CoreTaskFields {
             title: row.get(2)?,
-            status: parse_task_status(&row.get::<_, String>(3)?),
-            created_at: parse_datetime(&row.get::<_, String>(4)?)?,
-            updated_at: parse_datetime(&row.get::<_, String>(5)?)?,
-            target_date: parse_optional_date(row.get(6)?)?,
-            deadline: parse_optional_date(row.get(7)?)?,
-            launch_date: parse_optional_date(row.get(8)?)?,
-            target_time_hint: row.get(9)?,
-            deadline_time_hint: row.get(10)?,
-            launch_time_hint: row.get(11)?,
-            project: row.get(12)?,
+            description: row.get(3)?,
+            status: parse_task_status(&row.get::<_, String>(4)?),
+            created_at: parse_datetime(&row.get::<_, String>(5)?)?,
+            updated_at: parse_datetime(&row.get::<_, String>(6)?)?,
+            target_date: parse_optional_date(row.get(7)?)?,
+            deadline: parse_optional_date(row.get(8)?)?,
+            launch_date: parse_optional_date(row.get(9)?)?,
+            target_time_hint: row.get(10)?,
+            deadline_time_hint: row.get(11)?,
+            launch_time_hint: row.get(12)?,
+            project: row.get(13)?,
             tags,
         },
         annotations: Vec::new(),
@@ -510,6 +523,20 @@ fn migrate_legacy_status_column(connection: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn migrate_description_column(connection: &Connection) -> Result<()> {
+    let columns = connection
+        .prepare("PRAGMA table_info(tasks)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    if columns.iter().any(|column| column == "description") {
+        return Ok(());
+    }
+
+    connection.execute("ALTER TABLE tasks ADD COLUMN description TEXT", [])?;
+    Ok(())
+}
+
 fn generate_local_uuid() -> String {
     format!(
         "local-{}",
@@ -533,6 +560,7 @@ mod tests {
 
         let added = backend.add(NewTaskInput {
             title: "Ship SQLite backend".into(),
+            description: Some("Add a structured backend".into()),
             deadline: Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date")),
             tags: vec!["release".into()],
             ..Default::default()
@@ -542,6 +570,10 @@ mod tests {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, added.id);
         assert_eq!(tasks[0].title(), "Ship SQLite backend");
+        assert_eq!(
+            tasks[0].core.description.as_deref(),
+            Some("Add a structured backend")
+        );
         assert_eq!(
             tasks[0].core.deadline,
             Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date"))
@@ -562,12 +594,17 @@ mod tests {
             added.id.expect("id"),
             UpdateTaskInput {
                 title: Some("New title".into()),
+                description: Some("Updated task description".into()),
                 project: Some("taskforce".into()),
                 tags: Some(vec!["ops".into()]),
                 ..Default::default()
             },
         )?;
         assert_eq!(edited.title(), "New title");
+        assert_eq!(
+            edited.core.description.as_deref(),
+            Some("Updated task description")
+        );
         assert_eq!(edited.core.project.as_deref(), Some("taskforce"));
         assert_eq!(edited.core.tags, vec!["ops"]);
 

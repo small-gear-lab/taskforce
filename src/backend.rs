@@ -19,6 +19,7 @@ pub struct Task {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoreTaskFields {
     pub title: String,
+    pub description: Option<String>,
     pub status: TaskStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -36,6 +37,7 @@ pub struct CoreTaskFields {
 #[derive(Debug, Clone, Default)]
 pub struct NewTaskInput {
     pub title: String,
+    pub description: Option<String>,
     pub target_date: Option<NaiveDate>,
     pub deadline: Option<NaiveDate>,
     pub launch_date: Option<NaiveDate>,
@@ -49,6 +51,7 @@ pub struct NewTaskInput {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateTaskInput {
     pub title: Option<String>,
+    pub description: Option<String>,
     pub target_date: Option<NaiveDate>,
     pub clear_target_date: bool,
     pub deadline: Option<NaiveDate>,
@@ -105,6 +108,7 @@ impl Task {
             uuid,
             core: CoreTaskFields {
                 title,
+                description: None,
                 status: TaskStatus::Unstarted,
                 created_at: now,
                 updated_at: now,

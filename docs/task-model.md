@@ -42,6 +42,7 @@ These fields are part of the standard schema and may be assumed by CLI commands,
 ```rust
 pub struct CoreTaskFields {
     pub title: String,
+    pub description: Option<String>,
     pub status: TaskStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -69,6 +70,7 @@ Initial `TaskStatus` candidates:
 Why these are core:
 
 - `title` is the primary label in CLI and UI
+- `description` gives the task model a plugin-independent standard body field
 - `status` drives default listing behavior
 - timestamps are necessary for sorting and auditability
 - `target_date`, `deadline`, and `launch_date` match the user's real task template needs
@@ -131,6 +133,31 @@ Examples:
 - a workflow-specific extension contributes `target_sites`, `purpose`, or deployment metadata
 
 The important constraint is that these extension outputs should merge into the final `extra` payload instead of requiring every extension to add new top-level storage columns.
+
+## Description and search direction
+
+The task model should keep `core.description` as the standard description field even when plugins provide richer or source-specific descriptions.
+
+Recommended direction:
+
+- `core.description` is always available as the plugin-independent standard body field
+- plugin-specific descriptions remain in `extra.<plugin_id>.description`
+- UI rendering may prefer a plugin-provided description over `core.description`
+- storage should keep both, rather than overwriting the core field destructively
+
+Suggested display/search model:
+
+- `effective_description = plugin override ?? core.description`
+- default display uses `effective_description`
+- default search also uses `effective_description`
+- raw plugin descriptions remain available as provenance and may become opt-in secondary search targets later
+
+Why this split is useful:
+
+- the standard schema keeps a stable description field for generic tasks
+- plugin imports can preserve source-specific wording without losing the app-level description contract
+- future search can index a single canonical description field without double-counting both core and plugin text by default
+- plugin-specific raw descriptions remain available for debugging, auditability, or advanced source-aware search later
 
 ## Storage direction
 

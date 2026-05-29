@@ -30,6 +30,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         } => {
             let task = client.add(NewTaskInput {
                 title,
+                description: None,
                 target_date: parse_optional_date(target_date)?,
                 deadline: parse_optional_date(deadline)?,
                 launch_date: parse_optional_date(launch_date)?,
@@ -65,6 +66,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 id,
                 UpdateTaskInput {
                     title,
+                    description: None,
                     target_date: parse_optional_date(target_date)?,
                     clear_target_date,
                     deadline: parse_optional_date(deadline)?,
