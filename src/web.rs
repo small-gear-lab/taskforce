@@ -13,7 +13,8 @@ where
     B: TaskBackend + Clone + Send + Sync + 'static,
 {
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("serving taskforce at http://{addr}");
+    let local_addr = listener.local_addr()?;
+    println!("serving taskforce at http://{local_addr}");
     axum::serve(listener, app_router(backend)).await?;
     Ok(())
 }

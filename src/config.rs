@@ -53,17 +53,21 @@ impl AppConfig {
 }
 
 pub fn config_path() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join("config.toml"))
+}
+
+pub fn env_file_path() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join("taskforce.env"))
+}
+
+fn config_dir() -> Option<PathBuf> {
     if let Some(xdg_home) = std::env::var_os("XDG_CONFIG_HOME") {
-        return Some(
-            PathBuf::from(xdg_home)
-                .join("taskforce")
-                .join("config.toml"),
-        );
+        return Some(PathBuf::from(xdg_home).join("taskforce"));
     }
 
     std::env::var_os("HOME")
         .map(PathBuf::from)
-        .map(|home| home.join(".config").join("taskforce").join("config.toml"))
+        .map(|home| home.join(".config").join("taskforce"))
 }
 
 pub fn task_bin_env() -> Option<PathBuf> {
