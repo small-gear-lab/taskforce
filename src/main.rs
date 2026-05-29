@@ -1,7 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = taskforce::cli::Cli::parse();
-    taskforce::app::run(cli)
+    taskforce::app::run(cli).await
 }

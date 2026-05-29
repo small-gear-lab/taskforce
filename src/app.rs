@@ -1,10 +1,13 @@
 use anyhow::Result;
 
+use crate::backend::{Task, TaskBackend};
 use crate::cli::{Cli, Commands};
+use crate::config::AppConfig;
 use crate::taskwarrior::TaskwarriorClient;
 
-pub fn run(cli: Cli) -> Result<()> {
-    let client = TaskwarriorClient::new();
+pub async fn run(cli: Cli) -> Result<()> {
+    let config = AppConfig::load()?;
+    let client = TaskwarriorClient::new()?;
 
     match cli.command {
         Commands::List => {
@@ -15,6 +18,14 @@ pub fn run(cli: Cli) -> Result<()> {
             let task = client.add(&description)?;
             println!("added {}: {}", task.id_text(), task.description);
         }
+        Commands::Edit { id, description } => {
+            let task = client.edit(id, &description)?;
+            println!("updated {}: {}", task.id_text(), task.description);
+        }
+        Commands::Delete { id } => {
+            let task = client.delete(id)?;
+            println!("deleted {}: {}", task.id_text(), task.description);
+        }
         Commands::Done { id } => {
             let task = client.mark_done(id)?;
             println!("done {}: {}", task.id_text(), task.description);
@@ -23,12 +34,15 @@ pub fn run(cli: Cli) -> Result<()> {
             Some(task) => println!("next {}: {}", task.id_text(), task.description),
             None => println!("no pending tasks"),
         },
+        Commands::Serve => {
+            crate::web::serve(client, config.server.resolve()?).await?;
+        }
     }
 
     Ok(())
 }
 
-fn print_tasks(tasks: &[crate::taskwarrior::Task]) {
+fn print_tasks(tasks: &[Task]) {
     if tasks.is_empty() {
         println!("no pending tasks");
         return;
