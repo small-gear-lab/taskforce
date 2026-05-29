@@ -9,6 +9,8 @@ async fn main() -> Result<()> {
         dotenvy::from_path(&path)?;
     }
 
+    taskforce::i18n::init()?;
+
     let cli = taskforce::cli::Cli::parse();
     taskforce::app::run(cli).await
 }
