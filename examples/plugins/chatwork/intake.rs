@@ -112,6 +112,12 @@ impl TaskDraftPlugin for CompanyRequestTemplatePlugin {
             );
         }
 
+        draft.extra.insert(
+            self.plugin_id(),
+            "request_url",
+            Value::String(message.source_url.clone()),
+        );
+
         if let Some(lines) = sections.get("対象サイト") {
             draft.extra.insert(
                 self.plugin_id(),

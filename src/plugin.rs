@@ -2,6 +2,12 @@ use serde_json::{Map, Value};
 
 pub type PluginId = &'static str;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogicalFieldLabel {
+    pub physical_path: &'static str,
+    pub msgid: &'static str,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PluginExtra {
     namespaces: Map<String, Value>,
@@ -39,6 +45,10 @@ impl PluginExtra {
             .as_object_mut()
             .expect("plugin namespace should always be an object")
     }
+}
+
+pub fn logical_field_labels() -> &'static [LogicalFieldLabel] {
+    crate::chatwork_plugin::logical_field_labels()
 }
 
 #[cfg(test)]
