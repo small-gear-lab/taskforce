@@ -1,0 +1,10 @@
+# Copy this file to:
+#   $XDG_CONFIG_HOME/taskforce/config.toml
+# or, if XDG_CONFIG_HOME is unset:
+#   ~/.config/taskforce/config.toml
+
+# task_bin = "/home/<yourname>/.local/opt/taskwarrior/bin/task"
+
+[server]
+# host = "127.0.0.1"
+# port = 9090  # Optional. Omit this to let taskforce choose a free port.
