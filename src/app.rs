@@ -3,6 +3,7 @@ use chrono::NaiveDate;
 use serde_json::Value;
 
 use crate::backend::{NewTaskInput, Task, TaskBackend, UpdateTaskInput};
+use crate::chatwork_plugin::import_chatwork_url;
 use crate::cli::{Cli, Commands};
 use crate::config::AppConfig;
 use crate::local_backend::LocalBackend;
@@ -105,6 +106,10 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Done { id } => {
             let task = client.mark_done(id)?;
             println!("done {}: {}", task.id_text(), task.title());
+        }
+        Commands::ImportChatwork { url } => {
+            let task = import_chatwork_url(&client, &url)?;
+            println!("imported {}: {}", task.id_text(), task.title());
         }
         Commands::Abandon { id } => {
             let task = client.mark_abandoned(id)?;

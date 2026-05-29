@@ -1,2 +1,4 @@
 /target
 AGENTS.override.md
+/plugins/*
+!.gitkeep

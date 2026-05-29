@@ -62,6 +62,7 @@ cargo run -- edit 1 --clear-deadline --clear-project
 cargo run -- set 1 requester ishii
 cargo run -- get 1 requester
 cargo run -- unset 1 requester
+cargo run -- import-chatwork "https://www.chatwork.com/#!rid36219958-2111786210627420160"
 cargo run -- done 1
 cargo run -- abandon 1
 cargo run -- mistake 1
