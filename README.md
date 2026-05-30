@@ -50,11 +50,13 @@ taskforce/
 - A sample environment file is available at `config/taskforce.env.sample`.
 - Copy it to `$XDG_CONFIG_HOME/taskforce/config.toml`, or `~/.config/taskforce/config.toml` if `XDG_CONFIG_HOME` is unset.
 - For env-based overrides, copy `config/taskforce.env.sample` to `$XDG_CONFIG_HOME/taskforce/taskforce.env`.
+- Taskforce always reads the base files first: `config.toml` and `taskforce.env`.
+- If `TASKFORCE_ENV=<profile>` or `--env=<profile>` is set, taskforce also loads the matching profile entry from `[profiles]` / `[[profiles.items]]` in `config.toml`.
 - Enabled plugin manifests are loaded only from `plugins/<plugin-id>/manifest.toml`.
 - Catalog entries under `examples/plugins/` or `community/plugins/` are not loaded until you copy or symlink them into `plugins/`.
 - The database backend is selected with `[backend].kind`; `sqlite` and `postgres` are supported.
 - If `[backend].sqlite_path` and the legacy top-level `sqlite_path` are unset, taskforce uses `$XDG_DATA_HOME/taskforce/taskforce.db`, or `~/.local/share/taskforce/taskforce.db` if `XDG_DATA_HOME` is unset.
-- For Postgres, set `[backend].postgres_url` or `TASKFORCE_POSTGRES_URL`.
+- For Postgres, set `[backend].postgres_url`, `TASKFORCE_POSTGRES_URL`, or the split env vars `TASKFORCE_POSTGRES_HOST` and `TASKFORCE_POSTGRES_PASS`. `TASKFORCE_POSTGRES_USER`, `TASKFORCE_POSTGRES_PORT`, `TASKFORCE_POSTGRES_DB`, and `TASKFORCE_POSTGRES_SSLMODE` are optional and default to `postgres`, `5432`, `postgres`, and `require`.
 - When your provider requires a custom CA certificate, set `[backend].postgres_ssl_root_cert` or `TASKFORCE_POSTGRES_SSL_ROOT_CERT` to the PEM file path.
 - Supabase works with a standard Postgres URL such as `postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require`, plus its downloadable CA certificate file when certificate verification needs an explicit root.
 
@@ -62,6 +64,7 @@ taskforce/
 
 ```bash
 cargo run -- list
+cargo run -- --env=development list
 cargo run -- add "Write docs" --deadline 2026-06-05 --project taskforce --tag docs
 cargo run -- edit 1 "Write better docs" --target-date 2026-06-02 --launch-date 2026-06-10
 cargo run -- edit 1 --clear-deadline --clear-project
@@ -75,11 +78,12 @@ cargo run -- mistake 1
 cargo run -- duplicate 1
 TASKFORCE_SQLITE_PATH="$HOME/.local/share/taskforce/taskforce.db" cargo run -- serve
 TASKFORCE_POSTGRES_URL="postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require" cargo run -- serve
+TASKFORCE_POSTGRES_HOST="db.<project-ref>.supabase.co" TASKFORCE_POSTGRES_USER="postgres" TASKFORCE_POSTGRES_PASS="<password>" TASKFORCE_POSTGRES_PORT="5432" TASKFORCE_POSTGRES_DB="postgres" cargo run -- serve
 TASKFORCE_POSTGRES_SSL_ROOT_CERT="$HOME/.config/taskforce/supabase-prod-ca-2021.crt" cargo run -- serve
 ```
 
 - `serve` binds to `127.0.0.1` and chooses a free port unless a host or port is configured.
-- Manual runs also load `taskforce.env` automatically when it exists in the XDG config directory.
+- Manual runs load `taskforce.env` first, then the selected profile's `env_file` when `TASKFORCE_ENV` or `--env=<profile>` resolves to a configured profile.
 
 ## systemd user service
 
@@ -91,7 +95,7 @@ cargo build --release
 
 - If you want a stable local URL, set `[server].port` in your config before enabling the service.
 - A sample user unit is available at `config/systemd/taskforce.service`.
-- The sample unit reads `~/.config/taskforce/taskforce.env` via `EnvironmentFile=`.
+- The sample unit reads `~/.config/taskforce/taskforce.env` via `EnvironmentFile=`. Set `TASKFORCE_ENV=production` there if you want the service to load the `production` profile from `config.toml`.
 - Install it under `~/.config/systemd/user/taskforce.service`, then run:
 
 ```bash

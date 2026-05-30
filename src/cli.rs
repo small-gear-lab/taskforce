@@ -4,6 +4,9 @@ use clap::{Parser, Subcommand};
 #[command(name = "taskforce")]
 #[command(about = "Local structured task workflow")]
 pub struct Cli {
+    #[arg(long, global = true)]
+    pub env: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }

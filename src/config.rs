@@ -4,7 +4,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
 #[derive(Clone, Default, Deserialize)]
@@ -15,6 +15,43 @@ pub struct AppConfig {
     pub backend: BackendConfig,
     #[serde(default)]
     pub server: ServerConfig,
+}
+
+#[derive(Clone, Default, Deserialize)]
+struct FileAppConfig {
+    pub sqlite_path: Option<PathBuf>,
+    pub profiles: Option<ProfilesConfig>,
+    pub backend: Option<FileBackendConfig>,
+    pub server: Option<FileServerConfig>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ProfilesConfig {
+    pub default: Option<String>,
+    #[serde(default)]
+    pub items: Vec<ProfileItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProfileItem {
+    pub id: String,
+    pub config: Option<PathBuf>,
+    pub env_file: Option<PathBuf>,
+}
+
+#[derive(Clone, Default, Deserialize)]
+struct FileBackendConfig {
+    #[serde(alias = "type")]
+    pub kind: Option<BackendKind>,
+    pub sqlite_path: Option<PathBuf>,
+    pub postgres_url: Option<String>,
+    pub postgres_ssl_root_cert: Option<PathBuf>,
+}
+
+#[derive(Clone, Default, Deserialize)]
+struct FileServerConfig {
+    pub host: Option<IpAddr>,
+    pub port: Option<u16>,
 }
 
 #[derive(Clone, Default, Deserialize)]
@@ -53,11 +90,11 @@ impl ServerConfig {
 
 impl AppConfig {
     pub fn load() -> Result<Self> {
-        if let Some(path) = config_path() {
-            return Self::load_from_path(&path);
+        let mut config = Self::default();
+        for path in config_paths()? {
+            config.merge_file(&path)?;
         }
-
-        Ok(Self::default())
+        Ok(config)
     }
 
     pub fn load_from_path(path: &Path) -> Result<Self> {
@@ -67,8 +104,10 @@ impl AppConfig {
 
         let content = fs::read_to_string(path)
             .with_context(|| format!("failed to read config file at {}", path.display()))?;
-        let config: AppConfig = toml::from_str(&content)
+        let file_config: FileAppConfig = toml::from_str(&content)
             .with_context(|| format!("failed to parse config file at {}", path.display()))?;
+        let mut config = Self::default();
+        config.merge(file_config);
         Ok(config)
     }
 
@@ -89,6 +128,10 @@ impl AppConfig {
     }
 
     pub fn resolve_postgres_url(&self) -> Result<String> {
+        if let Some(url) = postgres_url_from_parts_env()? {
+            return Ok(url);
+        }
+
         if let Some(url) = postgres_url_env()? {
             return Ok(url);
         }
@@ -104,6 +147,49 @@ impl AppConfig {
         }
 
         Ok(self.backend.postgres_ssl_root_cert.clone())
+    }
+
+    fn merge_file(&mut self, path: &Path) -> Result<()> {
+        if !path.exists() {
+            return Ok(());
+        }
+
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("failed to read config file at {}", path.display()))?;
+        let file_config: FileAppConfig = toml::from_str(&content)
+            .with_context(|| format!("failed to parse config file at {}", path.display()))?;
+        self.merge(file_config);
+        Ok(())
+    }
+
+    fn merge(&mut self, other: FileAppConfig) {
+        if other.sqlite_path.is_some() {
+            self.sqlite_path = other.sqlite_path;
+        }
+
+        if let Some(backend) = other.backend {
+            if let Some(kind) = backend.kind {
+                self.backend.kind = kind;
+            }
+            if backend.sqlite_path.is_some() {
+                self.backend.sqlite_path = backend.sqlite_path;
+            }
+            if backend.postgres_url.is_some() {
+                self.backend.postgres_url = backend.postgres_url;
+            }
+            if backend.postgres_ssl_root_cert.is_some() {
+                self.backend.postgres_ssl_root_cert = backend.postgres_ssl_root_cert;
+            }
+        }
+
+        if let Some(server) = other.server {
+            if server.host.is_some() {
+                self.server.host = server.host;
+            }
+            if server.port.is_some() {
+                self.server.port = server.port;
+            }
+        }
     }
 }
 
@@ -132,10 +218,18 @@ impl fmt::Debug for BackendConfig {
 }
 
 pub fn config_path() -> Option<PathBuf> {
-    config_dir().map(|dir| dir.join("config.toml"))
+    config_paths().ok().and_then(|mut paths| paths.pop())
 }
 
 pub fn env_file_path() -> Option<PathBuf> {
+    env_file_paths().ok().and_then(|mut paths| paths.pop())
+}
+
+pub fn base_config_path() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join("config.toml"))
+}
+
+pub fn base_env_file_path() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("taskforce.env"))
 }
 
@@ -147,6 +241,189 @@ fn config_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .map(|home| home.join(".config").join("taskforce"))
+}
+
+pub fn config_paths() -> Result<Vec<PathBuf>> {
+    let Some(dir) = config_dir() else {
+        return Ok(Vec::new());
+    };
+
+    let mut paths = vec![dir.join("config.toml")];
+    if let Some(profile) = selected_profile()?
+        && let Some(path) = profile.config_path
+    {
+        paths.push(path);
+    }
+    Ok(paths)
+}
+
+pub fn env_file_paths() -> Result<Vec<PathBuf>> {
+    let Some(base_env) = base_env_file_path() else {
+        return Ok(Vec::new());
+    };
+
+    let mut paths = vec![base_env];
+    if let Some(profile) = selected_profile()?
+        && let Some(path) = profile.env_file_path
+    {
+        paths.push(path);
+    }
+    Ok(paths)
+}
+
+pub fn current_environment() -> Option<String> {
+    std::env::var("TASKFORCE_ENV")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn resolve_environment_from_sources(cli_env: Option<String>) -> Result<Option<String>> {
+    if let Some(env) = cli_env.or_else(current_environment) {
+        validate_environment_name(&env)?;
+        return Ok(Some(env));
+    }
+
+    let Some(profiles) = load_profiles_config()? else {
+        return Ok(None);
+    };
+
+    match profiles.default {
+        Some(env) => {
+            validate_environment_name(&env)?;
+            Ok(Some(env))
+        }
+        None => Ok(None),
+    }
+}
+
+pub fn bootstrap_environment_from_args<I, T>(args: I) -> Result<Option<String>>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString>,
+{
+    let mut args = args.into_iter().map(Into::into).peekable();
+    while let Some(arg) = args.next() {
+        let text = arg.to_string_lossy();
+        if let Some(value) = text.strip_prefix("--env=") {
+            let value = value.trim().to_string();
+            validate_environment_name(&value)?;
+            return Ok(Some(value));
+        }
+        if text == "--env" {
+            let Some(value) = args.next() else {
+                bail!("--env requires a profile name");
+            };
+            let value = value.to_string_lossy().trim().to_string();
+            validate_environment_name(&value)?;
+            return Ok(Some(value));
+        }
+    }
+
+    Ok(None)
+}
+
+fn validate_environment_name(name: &str) -> Result<()> {
+    if name
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "invalid TASKFORCE_ENV `{name}`: use only ASCII letters, digits, `_`, or `-`"
+    ))
+}
+
+fn validate_postgres_host(host: &str) -> Result<()> {
+    if host.is_empty() || host.chars().any(|ch| ch.is_whitespace() || ch == '/' || ch == '@') {
+        return Err(anyhow!("invalid TASKFORCE_POSTGRES_HOST: {host}"));
+    }
+
+    Ok(())
+}
+
+fn percent_encode_url_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        let is_unreserved =
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~');
+        if is_unreserved {
+            encoded.push(byte as char);
+        } else {
+            encoded.push('%');
+            encoded.push_str(&format!("{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+fn selected_profile() -> Result<Option<ResolvedProfile>> {
+    let Some(environment) = current_environment() else {
+        return Ok(None);
+    };
+
+    let profiles = load_profiles_config()?.ok_or_else(|| {
+        anyhow!(
+            "TASKFORCE_ENV is set to `{environment}`, but config.toml does not define [profiles]"
+        )
+    })?;
+
+    let item = profiles
+        .items
+        .into_iter()
+        .find(|item| item.id == environment)
+        .ok_or_else(|| anyhow!("unknown profile `{environment}` in [profiles.items]"))?;
+
+    Ok(Some(resolve_profile_item(item)?))
+}
+
+fn load_profiles_config() -> Result<Option<ProfilesConfig>> {
+    let Some(path) = base_config_path() else {
+        return Ok(None);
+    };
+
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read config file at {}", path.display()))?;
+    let file_config: FileAppConfig = toml::from_str(&content)
+        .with_context(|| format!("failed to parse config file at {}", path.display()))?;
+    Ok(file_config.profiles)
+}
+
+fn resolve_profile_item(item: ProfileItem) -> Result<ResolvedProfile> {
+    validate_environment_name(&item.id)?;
+    let base_dir =
+        config_dir().ok_or_else(|| anyhow!("taskforce config directory is unavailable"))?;
+    Ok(ResolvedProfile {
+        id: item.id,
+        config_path: item
+            .config
+            .map(|path| resolve_profile_path(&base_dir, path)),
+        env_file_path: item
+            .env_file
+            .map(|path| resolve_profile_path(&base_dir, path)),
+    })
+}
+
+fn resolve_profile_path(base_dir: &Path, path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        path
+    } else {
+        base_dir.join(path)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedProfile {
+    #[allow(dead_code)]
+    id: String,
+    config_path: Option<PathBuf>,
+    env_file_path: Option<PathBuf>,
 }
 
 pub fn sqlite_path_env() -> Result<Option<PathBuf>> {
@@ -162,6 +439,49 @@ pub fn postgres_url_env() -> Result<Option<String>> {
         Err(std::env::VarError::NotPresent) => Ok(None),
         Err(err) => Err(anyhow!("failed to read TASKFORCE_POSTGRES_URL: {err}")),
     }
+}
+
+pub fn postgres_url_from_parts_env() -> Result<Option<String>> {
+    let host = match std::env::var("TASKFORCE_POSTGRES_HOST") {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => return Ok(None),
+        Err(err) => return Err(anyhow!("failed to read TASKFORCE_POSTGRES_HOST: {err}")),
+    };
+    let user = match std::env::var("TASKFORCE_POSTGRES_USER") {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => "postgres".to_string(),
+        Err(err) => return Err(anyhow!("failed to read TASKFORCE_POSTGRES_USER: {err}")),
+    };
+    let password = std::env::var("TASKFORCE_POSTGRES_PASS")
+        .map_err(|err| anyhow!("failed to read TASKFORCE_POSTGRES_PASS: {err}"))?;
+    let port = match std::env::var("TASKFORCE_POSTGRES_PORT") {
+        Ok(value) => value
+            .parse::<u16>()
+            .map_err(|_| anyhow!("invalid TASKFORCE_POSTGRES_PORT: {value}"))?,
+        Err(std::env::VarError::NotPresent) => 5432,
+        Err(err) => return Err(anyhow!("failed to read TASKFORCE_POSTGRES_PORT: {err}")),
+    };
+    let database = match std::env::var("TASKFORCE_POSTGRES_DB") {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => "postgres".to_string(),
+        Err(err) => return Err(anyhow!("failed to read TASKFORCE_POSTGRES_DB: {err}")),
+    };
+    let sslmode = match std::env::var("TASKFORCE_POSTGRES_SSLMODE") {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => "require".to_string(),
+        Err(err) => return Err(anyhow!("failed to read TASKFORCE_POSTGRES_SSLMODE: {err}")),
+    };
+
+    validate_postgres_host(&host)?;
+    Ok(Some(format!(
+        "postgresql://{}:{}@{}:{}/{}?sslmode={}",
+        percent_encode_url_component(&user),
+        percent_encode_url_component(&password),
+        host,
+        port,
+        percent_encode_url_component(&database),
+        percent_encode_url_component(&sslmode),
+    )))
 }
 
 pub fn postgres_ssl_root_cert_env() -> Result<Option<PathBuf>> {
@@ -208,13 +528,17 @@ fn default_sqlite_path() -> Result<PathBuf> {
 mod tests {
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use anyhow::Result;
 
     use std::net::{IpAddr, SocketAddr};
 
-    use super::{AppConfig, BackendKind, ServerConfig};
+    use super::{
+        AppConfig, BackendKind, ServerConfig, bootstrap_environment_from_args, config_paths,
+        env_file_paths, postgres_url_from_parts_env, resolve_environment_from_sources,
+    };
 
     #[test]
     fn loads_sqlite_path_from_toml() -> Result<()> {
@@ -279,6 +603,115 @@ mod tests {
     }
 
     #[test]
+    fn overlays_environment_specific_config() -> Result<()> {
+        let _guard = env_lock().lock().expect("env lock");
+        let dir = unique_temp_dir("taskforce-config-env");
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &dir);
+            std::env::set_var("TASKFORCE_ENV", "development");
+        }
+
+        let taskforce_dir = dir.join("taskforce");
+        fs::create_dir_all(&taskforce_dir)?;
+        fs::write(
+            taskforce_dir.join("config.toml"),
+            "[profiles]\ndefault = \"production\"\n[[profiles.items]]\nid = \"development\"\nconfig = \"config.development.toml\"\n[[profiles.items]]\nid = \"production\"\nconfig = \"config.production.toml\"\n[backend]\nkind = \"sqlite\"\n[server]\nport = 9090\n",
+        )?;
+        fs::write(
+            taskforce_dir.join("config.development.toml"),
+            "[backend]\nkind = \"postgres\"\npostgres_ssl_root_cert = \"/tmp/dev.crt\"\n",
+        )?;
+
+        let config = AppConfig::load()?;
+        assert_eq!(config.backend.kind, BackendKind::Postgres);
+        assert_eq!(
+            config.backend.postgres_ssl_root_cert,
+            Some(PathBuf::from("/tmp/dev.crt"))
+        );
+        assert_eq!(config.server.port, Some(9090));
+
+        unsafe {
+            std::env::remove_var("TASKFORCE_ENV");
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn builds_environment_specific_paths() -> Result<()> {
+        let _guard = env_lock().lock().expect("env lock");
+        let dir = unique_temp_dir("taskforce-config-paths");
+        fs::create_dir_all(&dir)?;
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &dir);
+            std::env::set_var("TASKFORCE_ENV", "production");
+        }
+        let taskforce_dir = dir.join("taskforce");
+        fs::create_dir_all(&taskforce_dir)?;
+        fs::write(
+            taskforce_dir.join("config.toml"),
+            "[profiles]\ndefault = \"production\"\n[[profiles.items]]\nid = \"production\"\nconfig = \"config.production.toml\"\nenv_file = \"production.env\"\n",
+        )?;
+
+        let config_files = config_paths()?;
+        let env_files = env_file_paths()?;
+        assert_eq!(config_files.len(), 2);
+        assert!(config_files[0].ends_with("taskforce/config.toml"));
+        assert!(config_files[1].ends_with("taskforce/config.production.toml"));
+        assert_eq!(env_files.len(), 2);
+        assert!(env_files[0].ends_with("taskforce/taskforce.env"));
+        assert!(env_files[1].ends_with("taskforce/production.env"));
+
+        unsafe {
+            std::env::remove_var("TASKFORCE_ENV");
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn parses_environment_from_cli_args() -> Result<()> {
+        assert_eq!(
+            bootstrap_environment_from_args(["taskforce", "--env=development", "list"])?,
+            Some("development".to_string())
+        );
+        assert_eq!(
+            bootstrap_environment_from_args(["taskforce", "--env", "production", "serve"])?,
+            Some("production".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolves_default_environment_from_profiles() -> Result<()> {
+        let _guard = env_lock().lock().expect("env lock");
+        let dir = unique_temp_dir("taskforce-config-default-env");
+        let taskforce_dir = dir.join("taskforce");
+        fs::create_dir_all(&taskforce_dir)?;
+        fs::write(
+            taskforce_dir.join("config.toml"),
+            "[profiles]\ndefault = \"production\"\n[[profiles.items]]\nid = \"production\"\nenv_file = \"production.env\"\n",
+        )?;
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &dir);
+            std::env::remove_var("TASKFORCE_ENV");
+        }
+
+        assert_eq!(
+            resolve_environment_from_sources(None)?,
+            Some("production".to_string())
+        );
+
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[test]
     fn redacts_postgres_url_in_debug_output() {
         let config = AppConfig {
             sqlite_path: None,
@@ -294,6 +727,34 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("postgres_url: Some(\"<redacted>\")"));
         assert!(!debug.contains("secret"));
+    }
+
+    #[test]
+    fn builds_postgres_url_from_split_environment_variables() -> Result<()> {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("TASKFORCE_POSTGRES_HOST", "db.example.com");
+            std::env::set_var("TASKFORCE_POSTGRES_USER", "postgres");
+            std::env::set_var("TASKFORCE_POSTGRES_PASS", "ab@cd:ef");
+            std::env::set_var("TASKFORCE_POSTGRES_PORT", "5432");
+            std::env::set_var("TASKFORCE_POSTGRES_DB", "postgres");
+            std::env::remove_var("TASKFORCE_POSTGRES_SSLMODE");
+        }
+
+        let url = postgres_url_from_parts_env()?.expect("url");
+        assert_eq!(
+            url,
+            "postgresql://postgres:ab%40cd%3Aef@db.example.com:5432/postgres?sslmode=require"
+        );
+
+        unsafe {
+            std::env::remove_var("TASKFORCE_POSTGRES_HOST");
+            std::env::remove_var("TASKFORCE_POSTGRES_USER");
+            std::env::remove_var("TASKFORCE_POSTGRES_PASS");
+            std::env::remove_var("TASKFORCE_POSTGRES_PORT");
+            std::env::remove_var("TASKFORCE_POSTGRES_DB");
+        }
+        Ok(())
     }
 
     #[test]
@@ -322,5 +783,18 @@ mod tests {
             .expect("time")
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{nanos}.toml"))
+    }
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{nanos}"))
+    }
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 }
