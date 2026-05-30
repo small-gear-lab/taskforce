@@ -137,9 +137,6 @@ impl TaskDraftPlugin for CompanyRequestTemplatePlugin {
         }
 
         if let Some(lines) = sections.get("改修内容") {
-            if draft.input.description.is_none() {
-                draft.input.description = Some(lines.join("\n").trim().to_string());
-            }
             draft.extra.insert(
                 self.plugin_id(),
                 "description",
@@ -525,6 +522,7 @@ https://www.chatwork.com/#!rid36219958-1737709065104039936
             draft.input.deadline,
             chrono::NaiveDate::from_ymd_opt(2026, 6, 5)
         );
+        assert_eq!(draft.input.description, None);
         assert_eq!(
             draft.extra.get("chatwork", "requester"),
             Some(&Value::String("佐藤".into()))

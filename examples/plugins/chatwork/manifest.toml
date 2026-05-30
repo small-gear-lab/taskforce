@@ -1,0 +1,117 @@
+id = "chatwork"
+name = "Chatwork"
+
+[[custom_fields]]
+path = "requester"
+label = "Requester"
+placement = "right"
+
+[[custom_fields]]
+path = "request_url"
+label = "This Request"
+placement = "right"
+
+[[custom_fields]]
+path = "related_request_url"
+label = "Related Request"
+placement = "right"
+
+[[custom_fields]]
+path = "summary"
+label = "Request Summary"
+placement = "right"
+
+[[custom_fields]]
+path = "abstract"
+label = "Request Purpose"
+placement = "right"
+
+[[custom_fields]]
+path = "description"
+label = "Request Details"
+placement = "hidden"
+
+[[custom_fields]]
+path = "production_rollout"
+label = "Production Rollout"
+placement = "right"
+
+[[custom_fields]]
+path = "template_kind"
+label = "Template Kind"
+placement = "right"
+
+[[custom_fields]]
+path = "target_sites"
+label = "Target Sites"
+placement = "right"
+
+[[custom_fields]]
+path = "target_sites[].label"
+label = "Site Label"
+placement = "right"
+
+[[custom_fields]]
+path = "target_sites[].site_code"
+label = "Site Code"
+placement = "right"
+
+[[custom_fields]]
+path = "target_sites[].raw"
+label = "Scope Line"
+placement = "hidden"
+
+[[custom_fields]]
+path = "render_blocks"
+label = "Original Request"
+placement = "left"
+
+[[custom_fields]]
+path = "source"
+label = "Message Source"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.kind"
+label = "Kind"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.room_id"
+label = "Room ID"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.message_id"
+label = "Message ID"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.url"
+label = "Message URL"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.sender"
+label = "Sender"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.sender.account_id"
+label = "Sender Account ID"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.sender.name"
+label = "Sender Name"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.sent_at"
+label = "Sent At"
+placement = "hidden"
+
+[[custom_fields]]
+path = "source.body_raw"
+label = "Body"
+placement = "hidden"

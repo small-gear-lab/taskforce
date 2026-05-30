@@ -3,7 +3,7 @@ const config = configNode ? JSON.parse(configNode.textContent ?? "{}") : {};
 const labels = config.labels ?? {};
 const messages = config.messages ?? {};
 const statusLabels = config.status_labels ?? {};
-const logicalLabels = config.logical_labels ?? {};
+let pluginFields = {};
 
 const taskId = window.location.pathname.split("/").pop();
 const legacyChatworkKeys = [
@@ -82,8 +82,8 @@ function dateLine(date, hint) {
   return [date, hint].filter(Boolean).join(" ");
 }
 
-function effectiveDescription(task, chatwork) {
-  return chatwork.description ?? task.core.description;
+function effectiveDescription(task) {
+  return task.core.description;
 }
 
 function extractInfoBlock(text) {
@@ -289,8 +289,28 @@ function findNextMarkup(text, terminator) {
   return indexes.length === 0 ? text.length : Math.min(...indexes);
 }
 
+function pluginManifest(pluginKey) {
+  return pluginFields[pluginKey] ?? null;
+}
+
+function pluginFieldMeta(path) {
+  const [pluginKey, ...rest] = path.split(".");
+  const manifest = pluginManifest(pluginKey);
+  if (!manifest) {
+    return null;
+  }
+  if (rest.length === 0) {
+    return { label: manifest.name };
+  }
+  return manifest.fields?.[rest.join(".")] ?? null;
+}
+
+function fieldPlacement(pluginKey, fieldKey) {
+  return pluginManifest(pluginKey)?.fields?.[fieldKey]?.placement ?? "right";
+}
+
 function labelFor(path, fallbackKey) {
-  return logicalLabels[path] ?? fallbackKey;
+  return pluginFieldMeta(path)?.label ?? fallbackKey;
 }
 
 function isObject(value) {
@@ -323,14 +343,37 @@ function normalizeChatworkExtra(extra) {
 }
 
 function filterPluginFields(pluginKey, pluginValue) {
-  if (pluginKey === "chatwork" && isObject(pluginValue)) {
-    const filtered = { ...pluginValue };
-    delete filtered.source;
-    delete filtered.render_blocks;
-    return filtered;
+  if (isObject(pluginValue)) {
+    return Object.fromEntries(
+      Object.entries(pluginValue).filter(([fieldKey]) => {
+        return fieldPlacement(pluginKey, fieldKey) === "right";
+      })
+    );
   }
 
   return pluginValue;
+}
+
+function leftFieldValue(pluginKey, pluginValue, preferredField) {
+  if (!isObject(pluginValue)) {
+    return null;
+  }
+
+  if (
+    preferredField &&
+    fieldPlacement(pluginKey, preferredField) === "left" &&
+    Object.hasOwn(pluginValue, preferredField)
+  ) {
+    return pluginValue[preferredField];
+  }
+
+  for (const [fieldKey, value] of Object.entries(pluginValue)) {
+    if (fieldPlacement(pluginKey, fieldKey) === "left") {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 function normalizePluginExtra(extra) {
@@ -593,8 +636,9 @@ function renderPluginExtraSections(container, extra) {
 }
 
 function normalizeOriginalRequestBlocks(chatwork) {
-  if (Array.isArray(chatwork.render_blocks) && chatwork.render_blocks.length > 0) {
-    return chatwork.render_blocks;
+  const renderBlocks = leftFieldValue("chatwork", chatwork, "render_blocks");
+  if (Array.isArray(renderBlocks) && renderBlocks.length > 0) {
+    return renderBlocks;
   }
 
   const source = chatwork.source ?? {};
@@ -685,8 +729,12 @@ function renderRequestBlock(block) {
 }
 
 async function loadTask() {
-  const response = await fetch(`/api/tasks/${taskId}`);
-  if (!response.ok) {
+  const [taskResponse, pluginResponse] = await Promise.all([
+    fetch(`/api/tasks/${taskId}`),
+    fetch("/api/plugin-manifests"),
+  ]);
+
+  if (!taskResponse.ok) {
     document.getElementById("task-title").textContent = message("task_not_found", "Task not found");
     document.getElementById("task-abstract").textContent = message(
       "task_could_not_be_loaded",
@@ -695,7 +743,9 @@ async function loadTask() {
     return;
   }
 
-  const task = await response.json();
+  pluginFields = pluginResponse.ok ? await pluginResponse.json() : {};
+
+  const task = await taskResponse.json();
   const chatwork = normalizeChatworkExtra(task.extra) ?? {};
   const source = chatwork.source ?? {};
   const metaLine = document.getElementById("meta-line");
@@ -703,7 +753,7 @@ async function loadTask() {
   const tagList = document.getElementById("tag-list");
   const pluginExtraSections = document.getElementById("plugin-extra-sections");
   const descriptionSection = document.getElementById("task-description-section");
-  const description = effectiveDescription(task, chatwork);
+  const description = effectiveDescription(task);
 
   document.title = `${task.core.title} | taskforce`;
   document.getElementById("task-title").textContent = task.core.title;

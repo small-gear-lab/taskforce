@@ -164,6 +164,15 @@ msgstr "サイトコード"
 msgid "Scope Line"
 msgstr "対象行"
 
+msgid "Request Summary"
+msgstr "改修概要"
+
+msgid "Request Purpose"
+msgstr "改修目的"
+
+msgid "Request Details"
+msgstr "改修内容"
+
 msgid "Message Source"
 msgstr "メッセージ情報"
 

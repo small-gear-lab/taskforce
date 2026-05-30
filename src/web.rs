@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 
 use crate::backend::{Task, TaskBackend};
 use crate::i18n::tr;
-use crate::plugin::logical_field_labels;
+use crate::plugin::plugin_manifests;
 
 pub async fn serve<B>(backend: B, addr: SocketAddr) -> Result<()>
 where
@@ -35,6 +35,7 @@ where
         .route("/assets/task_detail.js", get(task_detail_js_asset))
         .route("/api/tasks", get(api_tasks::<B>))
         .route("/api/tasks/{id}", get(api_task::<B>))
+        .route("/api/plugin-manifests", get(api_plugin_manifests))
         .route("/tasks/{id}", get(task_detail))
         .with_state(backend)
 }
@@ -64,6 +65,12 @@ where
         .get_task(id)
         .map(Json)
         .map_err(map_task_error_status)
+}
+
+async fn api_plugin_manifests() -> Result<Json<Value>, StatusCode> {
+    plugin_fields_value()
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn task_detail(Path(_id): Path<u64>) -> Html<String> {
@@ -150,15 +157,31 @@ fn render_template(template: &str, replacements: &[(&str, String)]) -> String {
     rendered
 }
 
-fn logical_labels_value() -> Value {
-    let mut labels = Map::new();
-    for entry in logical_field_labels() {
-        labels.insert(
-            entry.physical_path.to_string(),
-            Value::String(tr(entry.msgid)),
+fn plugin_fields_value() -> Result<Value> {
+    let mut plugins = Map::new();
+
+    for manifest in plugin_manifests()? {
+        let mut fields = Map::new();
+        for field in &manifest.custom_fields {
+            fields.insert(
+                field.path.clone(),
+                json!({
+                    "label": tr(&field.label),
+                    "placement": field.placement,
+                }),
+            );
+        }
+
+        plugins.insert(
+            manifest.id.clone(),
+            json!({
+                "name": tr(&manifest.name),
+                "fields": fields,
+            }),
         );
     }
-    Value::Object(labels)
+
+    Ok(Value::Object(plugins))
 }
 
 fn index_config_json() -> String {
@@ -203,7 +226,6 @@ fn detail_config_json() -> String {
             "mistaken": tr("mistaken"),
             "duplicated": tr("duplicated"),
         },
-        "logical_labels": logical_labels_value(),
     })
     .to_string()
 }
@@ -532,7 +554,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn detail_page_prefers_plugin_description_over_core_description() {
+    async fn detail_page_uses_only_core_description_for_description_section() {
         let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
         let response = app
@@ -551,9 +573,9 @@ mod tests {
             .expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
-        assert!(text.contains("function effectiveDescription(task, chatwork) {"));
-        assert!(text.contains("return chatwork.description ?? task.core.description;"));
-        assert!(text.contains("effectiveDescription(task, chatwork)"));
+        assert!(text.contains("function effectiveDescription(task) {"));
+        assert!(text.contains("return task.core.description;"));
+        assert!(text.contains("effectiveDescription(task)"));
     }
 
     #[tokio::test]
@@ -634,6 +656,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn plugin_manifests_api_returns_translated_field_metadata() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/plugin-manifests")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let value: Value = serde_json::from_slice(&body).expect("json");
+
+        assert_eq!(
+            value["chatwork"]["fields"]["render_blocks"]["placement"],
+            Value::String("left".into())
+        );
+        assert_eq!(
+            value["chatwork"]["fields"]["description"]["placement"],
+            Value::String("hidden".into())
+        );
+        assert_eq!(
+            value["chatwork"]["fields"]["summary"]["label"],
+            Value::String("Request Summary".into())
+        );
+    }
+
+    #[tokio::test]
     async fn detail_page_normalizes_legacy_chatwork_extra_and_flattens_plugin_root() {
         let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
@@ -654,8 +710,12 @@ mod tests {
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
         assert!(text.contains("const legacyChatworkKeys = ["));
+        assert!(text.contains("let pluginFields = {};"));
         assert!(text.contains("function normalizeChatworkExtra(extra) {"));
         assert!(text.contains("return extra.chatwork;"));
+        assert!(text.contains("function pluginManifest(pluginKey) {"));
+        assert!(text.contains("function pluginFieldMeta(path) {"));
+        assert!(text.contains("function fieldPlacement(pluginKey, fieldKey) {"));
         assert!(text.contains(
             "if (pluginValue && typeof pluginValue === \"object\" && !Array.isArray(pluginValue))"
         ));
@@ -710,7 +770,8 @@ mod tests {
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
         assert!(text.contains("const chatwork = normalizeChatworkExtra(task.extra) ?? {};"));
-        assert!(text.contains("delete filtered.source;"));
+        assert!(text.contains("fetch(\"/api/plugin-manifests\")"));
+        assert!(text.contains("return fieldPlacement(pluginKey, fieldKey) === \"right\";"));
         assert!(text.contains("return parseChatworkRenderBlocks(source.body_raw);"));
     }
 
@@ -734,8 +795,9 @@ mod tests {
             .expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
-        assert!(text.contains("delete filtered.render_blocks;"));
-        assert!(text.contains("chatwork.render_blocks"));
+        assert!(text.contains(
+            "const renderBlocks = leftFieldValue(\"chatwork\", chatwork, \"render_blocks\");"
+        ));
         assert!(text.contains("renderOriginalRequest("));
     }
 

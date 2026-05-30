@@ -1,11 +1,32 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 pub type PluginId = &'static str;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LogicalFieldLabel {
-    pub physical_path: &'static str,
-    pub msgid: &'static str,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginManifest {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub custom_fields: Vec<PluginCustomField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginCustomField {
+    pub path: String,
+    pub label: String,
+    #[serde(default)]
+    pub placement: PluginFieldPlacement,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginFieldPlacement {
+    Left,
+    #[default]
+    Right,
+    Hidden,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,15 +157,15 @@ impl PluginExtra {
     }
 }
 
-pub fn logical_field_labels() -> &'static [LogicalFieldLabel] {
-    crate::chatwork_plugin::logical_field_labels()
+pub fn plugin_manifests() -> Result<Vec<PluginManifest>> {
+    Ok(vec![crate::chatwork_plugin::manifest()?])
 }
 
 #[cfg(test)]
 mod tests {
     use serde_json::Value;
 
-    use super::{PluginExtra, RenderBlock};
+    use super::{PluginExtra, PluginFieldPlacement, RenderBlock, plugin_manifests};
 
     #[test]
     fn stores_values_under_plugin_namespaces() {
@@ -220,5 +241,22 @@ mod tests {
                 "children": [],
             })
         );
+    }
+
+    #[test]
+    fn loads_plugin_manifests() {
+        let manifests = plugin_manifests().expect("plugin manifests");
+        let chatwork = manifests
+            .iter()
+            .find(|manifest| manifest.id == "chatwork")
+            .expect("chatwork manifest");
+
+        assert_eq!(chatwork.name, "Chatwork");
+        assert!(chatwork.custom_fields.iter().any(|field| {
+            field.path == "render_blocks" && field.placement == PluginFieldPlacement::Left
+        }));
+        assert!(chatwork.custom_fields.iter().any(|field| {
+            field.path == "source" && field.placement == PluginFieldPlacement::Hidden
+        }));
     }
 }
