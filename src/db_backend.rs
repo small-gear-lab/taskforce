@@ -1,95 +1,118 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::backend::{NewTaskInput, Task, TaskBackend, UpdateTaskInput};
 use crate::config::{AppConfig, BackendKind};
 use crate::local_backend::LocalBackend;
+use crate::postgres_backend::PostgresBackend;
 
 #[derive(Debug, Clone)]
 pub enum ConfiguredBackend {
     Sqlite(LocalBackend),
+    Postgres(PostgresBackend),
 }
 
 impl ConfiguredBackend {
-    pub fn open(config: &AppConfig) -> Result<Self> {
+    pub async fn open(config: &AppConfig) -> Result<Self> {
         match config.backend.kind {
             BackendKind::Sqlite => Ok(Self::Sqlite(LocalBackend::new(
                 config.resolve_sqlite_path()?,
             )?)),
+            BackendKind::Postgres => Ok(Self::Postgres(
+                PostgresBackend::connect(
+                    &config.resolve_postgres_url()?,
+                    config.resolve_postgres_ssl_root_cert()?.as_deref(),
+                )
+                .await?,
+            )),
         }
     }
 }
 
+#[async_trait]
 impl TaskBackend for ConfiguredBackend {
-    fn list_pending(&self) -> Result<Vec<Task>> {
+    async fn list_pending(&self) -> Result<Vec<Task>> {
         match self {
-            Self::Sqlite(backend) => backend.list_pending(),
+            Self::Sqlite(backend) => backend.list_pending().await,
+            Self::Postgres(backend) => backend.list_pending().await,
         }
     }
 
-    fn add(&self, input: NewTaskInput) -> Result<Task> {
+    async fn add(&self, input: NewTaskInput) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.add(input),
+            Self::Sqlite(backend) => backend.add(input).await,
+            Self::Postgres(backend) => backend.add(input).await,
         }
     }
 
-    fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task> {
+    async fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.edit(id, input),
+            Self::Sqlite(backend) => backend.edit(id, input).await,
+            Self::Postgres(backend) => backend.edit(id, input).await,
         }
     }
 
-    fn get_task(&self, id: u64) -> Result<Task> {
+    async fn get_task(&self, id: u64) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.get_task(id),
+            Self::Sqlite(backend) => backend.get_task(id).await,
+            Self::Postgres(backend) => backend.get_task(id).await,
         }
     }
 
-    fn set_extra(&self, id: u64, key: &str, value: Value) -> Result<Task> {
+    async fn set_extra(&self, id: u64, key: &str, value: Value) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.set_extra(id, key, value),
+            Self::Sqlite(backend) => backend.set_extra(id, key, value).await,
+            Self::Postgres(backend) => backend.set_extra(id, key, value).await,
         }
     }
 
-    fn get_extra(&self, id: u64, key: &str) -> Result<Option<Value>> {
+    async fn get_extra(&self, id: u64, key: &str) -> Result<Option<Value>> {
         match self {
-            Self::Sqlite(backend) => backend.get_extra(id, key),
+            Self::Sqlite(backend) => backend.get_extra(id, key).await,
+            Self::Postgres(backend) => backend.get_extra(id, key).await,
         }
     }
 
-    fn unset_extra(&self, id: u64, key: &str) -> Result<Task> {
+    async fn unset_extra(&self, id: u64, key: &str) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.unset_extra(id, key),
+            Self::Sqlite(backend) => backend.unset_extra(id, key).await,
+            Self::Postgres(backend) => backend.unset_extra(id, key).await,
         }
     }
 
-    fn mark_done(&self, id: u64) -> Result<Task> {
+    async fn mark_done(&self, id: u64) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.mark_done(id),
+            Self::Sqlite(backend) => backend.mark_done(id).await,
+            Self::Postgres(backend) => backend.mark_done(id).await,
         }
     }
 
-    fn mark_abandoned(&self, id: u64) -> Result<Task> {
+    async fn mark_abandoned(&self, id: u64) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.mark_abandoned(id),
+            Self::Sqlite(backend) => backend.mark_abandoned(id).await,
+            Self::Postgres(backend) => backend.mark_abandoned(id).await,
         }
     }
 
-    fn mark_mistaken(&self, id: u64) -> Result<Task> {
+    async fn mark_mistaken(&self, id: u64) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.mark_mistaken(id),
+            Self::Sqlite(backend) => backend.mark_mistaken(id).await,
+            Self::Postgres(backend) => backend.mark_mistaken(id).await,
         }
     }
 
-    fn mark_duplicated(&self, id: u64) -> Result<Task> {
+    async fn mark_duplicated(&self, id: u64) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.mark_duplicated(id),
+            Self::Sqlite(backend) => backend.mark_duplicated(id).await,
+            Self::Postgres(backend) => backend.mark_duplicated(id).await,
         }
     }
 
-    fn next_task(&self) -> Result<Option<Task>> {
+    async fn next_task(&self) -> Result<Option<Task>> {
         match self {
-            Self::Sqlite(backend) => backend.next_task(),
+            Self::Sqlite(backend) => backend.next_task().await,
+            Self::Postgres(backend) => backend.next_task().await,
         }
     }
 }

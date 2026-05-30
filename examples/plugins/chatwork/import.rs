@@ -8,10 +8,10 @@ use crate::backend::{Task, TaskBackend};
 
 use super::intake::{ChatworkMessage, TaskDraft, build_draft_from_chatwork};
 
-pub fn import_chatwork_url<B: TaskBackend>(backend: &B, url: &str) -> Result<Task> {
+pub async fn import_chatwork_url<B: TaskBackend>(backend: &B, url: &str) -> Result<Task> {
     let message = fetch_chatwork_message(url)?;
     let draft = build_draft_from_chatwork(&message)?;
-    persist_task_draft(backend, draft)
+    persist_task_draft(backend, draft).await
 }
 
 fn fetch_chatwork_message(url: &str) -> Result<ChatworkMessage> {
@@ -32,11 +32,13 @@ fn fetch_chatwork_message(url: &str) -> Result<ChatworkMessage> {
     response.try_into_message(url)
 }
 
-fn persist_task_draft<B: TaskBackend>(backend: &B, draft: TaskDraft) -> Result<Task> {
-    let mut task = backend.add(draft.input)?;
+async fn persist_task_draft<B: TaskBackend>(backend: &B, draft: TaskDraft) -> Result<Task> {
+    let mut task = backend.add(draft.input).await?;
 
     for (key, value) in draft.extra.into_map() {
-        task = backend.set_extra(task.id.expect("task id"), &key, value)?;
+        task = backend
+            .set_extra(task.id.expect("task id"), &key, value)
+            .await?;
     }
 
     Ok(task)

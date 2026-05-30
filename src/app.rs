@@ -10,11 +10,11 @@ use crate::db_backend::ConfiguredBackend;
 
 pub async fn run(cli: Cli) -> Result<()> {
     let config = AppConfig::load()?;
-    let client = ConfiguredBackend::open(&config)?;
+    let client = ConfiguredBackend::open(&config).await?;
 
     match cli.command {
         Commands::List => {
-            let tasks = client.list_pending()?;
+            let tasks = client.list_pending().await?;
             print_tasks(&tasks);
         }
         Commands::Add {
@@ -28,18 +28,20 @@ pub async fn run(cli: Cli) -> Result<()> {
             project,
             tags,
         } => {
-            let task = client.add(NewTaskInput {
-                title,
-                description: None,
-                target_date: parse_optional_date(target_date)?,
-                deadline: parse_optional_date(deadline)?,
-                launch_date: parse_optional_date(launch_date)?,
-                target_time_hint,
-                deadline_time_hint,
-                launch_time_hint,
-                project,
-                tags,
-            })?;
+            let task = client
+                .add(NewTaskInput {
+                    title,
+                    description: None,
+                    target_date: parse_optional_date(target_date)?,
+                    deadline: parse_optional_date(deadline)?,
+                    launch_date: parse_optional_date(launch_date)?,
+                    target_time_hint,
+                    deadline_time_hint,
+                    launch_time_hint,
+                    project,
+                    tags,
+                })
+                .await?;
             println!("added {}: {}", task.id_text(), task.title());
         }
         Commands::Edit {
@@ -62,29 +64,31 @@ pub async fn run(cli: Cli) -> Result<()> {
             tags,
             clear_tags,
         } => {
-            let task = client.edit(
-                id,
-                UpdateTaskInput {
-                    title,
-                    description: None,
-                    target_date: parse_optional_date(target_date)?,
-                    clear_target_date,
-                    deadline: parse_optional_date(deadline)?,
-                    clear_deadline,
-                    launch_date: parse_optional_date(launch_date)?,
-                    clear_launch_date,
-                    target_time_hint,
-                    clear_target_time_hint,
-                    deadline_time_hint,
-                    clear_deadline_time_hint,
-                    launch_time_hint,
-                    clear_launch_time_hint,
-                    project,
-                    clear_project,
-                    tags: (!tags.is_empty()).then_some(tags),
-                    clear_tags,
-                },
-            )?;
+            let task = client
+                .edit(
+                    id,
+                    UpdateTaskInput {
+                        title,
+                        description: None,
+                        target_date: parse_optional_date(target_date)?,
+                        clear_target_date,
+                        deadline: parse_optional_date(deadline)?,
+                        clear_deadline,
+                        launch_date: parse_optional_date(launch_date)?,
+                        clear_launch_date,
+                        target_time_hint,
+                        clear_target_time_hint,
+                        deadline_time_hint,
+                        clear_deadline_time_hint,
+                        launch_time_hint,
+                        clear_launch_time_hint,
+                        project,
+                        clear_project,
+                        tags: (!tags.is_empty()).then_some(tags),
+                        clear_tags,
+                    },
+                )
+                .await?;
             println!("updated {}: {}", task.id_text(), task.title());
         }
         Commands::Set {
@@ -94,38 +98,38 @@ pub async fn run(cli: Cli) -> Result<()> {
             json,
         } => {
             let value = parse_extra_value(value, json)?;
-            let task = client.set_extra(id, &key, value)?;
+            let task = client.set_extra(id, &key, value).await?;
             println!("updated {}: {}", task.id_text(), task.title());
         }
-        Commands::Get { id, key } => match client.get_extra(id, &key)? {
+        Commands::Get { id, key } => match client.get_extra(id, &key).await? {
             Some(value) => println!("{}", serde_json::to_string_pretty(&value)?),
             None => println!("null"),
         },
         Commands::Unset { id, key } => {
-            let task = client.unset_extra(id, &key)?;
+            let task = client.unset_extra(id, &key).await?;
             println!("updated {}: {}", task.id_text(), task.title());
         }
         Commands::Done { id } => {
-            let task = client.mark_done(id)?;
+            let task = client.mark_done(id).await?;
             println!("done {}: {}", task.id_text(), task.title());
         }
         Commands::ImportChatwork { url } => {
-            let task = import_chatwork_url(&client, &url)?;
+            let task = import_chatwork_url(&client, &url).await?;
             println!("imported {}: {}", task.id_text(), task.title());
         }
         Commands::Abandon { id } => {
-            let task = client.mark_abandoned(id)?;
+            let task = client.mark_abandoned(id).await?;
             println!("abandoned {}: {}", task.id_text(), task.title());
         }
         Commands::Mistake { id } => {
-            let task = client.mark_mistaken(id)?;
+            let task = client.mark_mistaken(id).await?;
             println!("mistaken {}: {}", task.id_text(), task.title());
         }
         Commands::Duplicate { id } => {
-            let task = client.mark_duplicated(id)?;
+            let task = client.mark_duplicated(id).await?;
             println!("duplicated {}: {}", task.id_text(), task.title());
         }
-        Commands::Next => match client.next_task()? {
+        Commands::Next => match client.next_task().await? {
             Some(task) => println!("next {}: {}", task.id_text(), task.title()),
             None => println!("no open tasks"),
         },

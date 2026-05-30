@@ -1,4 +1,5 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -144,17 +145,18 @@ impl Task {
     }
 }
 
+#[async_trait]
 pub trait TaskBackend {
-    fn list_pending(&self) -> Result<Vec<Task>>;
-    fn add(&self, input: NewTaskInput) -> Result<Task>;
-    fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task>;
-    fn get_task(&self, id: u64) -> Result<Task>;
-    fn set_extra(&self, id: u64, key: &str, value: Value) -> Result<Task>;
-    fn get_extra(&self, id: u64, key: &str) -> Result<Option<Value>>;
-    fn unset_extra(&self, id: u64, key: &str) -> Result<Task>;
-    fn mark_done(&self, id: u64) -> Result<Task>;
-    fn mark_abandoned(&self, id: u64) -> Result<Task>;
-    fn mark_mistaken(&self, id: u64) -> Result<Task>;
-    fn mark_duplicated(&self, id: u64) -> Result<Task>;
-    fn next_task(&self) -> Result<Option<Task>>;
+    async fn list_pending(&self) -> Result<Vec<Task>>;
+    async fn add(&self, input: NewTaskInput) -> Result<Task>;
+    async fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task>;
+    async fn get_task(&self, id: u64) -> Result<Task>;
+    async fn set_extra(&self, id: u64, key: &str, value: Value) -> Result<Task>;
+    async fn get_extra(&self, id: u64, key: &str) -> Result<Option<Value>>;
+    async fn unset_extra(&self, id: u64, key: &str) -> Result<Task>;
+    async fn mark_done(&self, id: u64) -> Result<Task>;
+    async fn mark_abandoned(&self, id: u64) -> Result<Task>;
+    async fn mark_mistaken(&self, id: u64) -> Result<Task>;
+    async fn mark_duplicated(&self, id: u64) -> Result<Task>;
+    async fn next_task(&self) -> Result<Option<Task>>;
 }

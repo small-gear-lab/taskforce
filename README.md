@@ -50,8 +50,11 @@ taskforce/
 - A sample environment file is available at `config/taskforce.env.sample`.
 - Copy it to `$XDG_CONFIG_HOME/taskforce/config.toml`, or `~/.config/taskforce/config.toml` if `XDG_CONFIG_HOME` is unset.
 - For env-based overrides, copy `config/taskforce.env.sample` to `$XDG_CONFIG_HOME/taskforce/taskforce.env`.
-- The database backend is selected with `[backend].kind`; currently `sqlite` is supported.
+- The database backend is selected with `[backend].kind`; `sqlite` and `postgres` are supported.
 - If `[backend].sqlite_path` and the legacy top-level `sqlite_path` are unset, taskforce uses `$XDG_DATA_HOME/taskforce/taskforce.db`, or `~/.local/share/taskforce/taskforce.db` if `XDG_DATA_HOME` is unset.
+- For Postgres, set `[backend].postgres_url` or `TASKFORCE_POSTGRES_URL`.
+- When your provider requires a custom CA certificate, set `[backend].postgres_ssl_root_cert` or `TASKFORCE_POSTGRES_SSL_ROOT_CERT` to the PEM file path.
+- Supabase works with a standard Postgres URL such as `postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require`, plus its downloadable CA certificate file when certificate verification needs an explicit root.
 
 ## Current commands
 
@@ -69,6 +72,8 @@ cargo run -- abandon 1
 cargo run -- mistake 1
 cargo run -- duplicate 1
 TASKFORCE_SQLITE_PATH="$HOME/.local/share/taskforce/taskforce.db" cargo run -- serve
+TASKFORCE_POSTGRES_URL="postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require" cargo run -- serve
+TASKFORCE_POSTGRES_SSL_ROOT_CERT="$HOME/.config/taskforce/supabase-prod-ca-2021.crt" cargo run -- serve
 ```
 
 - `serve` binds to `127.0.0.1` and chooses a free port unless a host or port is configured.

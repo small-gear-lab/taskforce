@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fs;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -6,7 +7,7 @@ use std::str::FromStr;
 use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 pub struct AppConfig {
     /// Legacy SQLite path. Prefer `[backend].sqlite_path` for new configs.
     pub sqlite_path: Option<PathBuf>,
@@ -16,11 +17,13 @@ pub struct AppConfig {
     pub server: ServerConfig,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 pub struct BackendConfig {
     #[serde(default, alias = "type")]
     pub kind: BackendKind,
     pub sqlite_path: Option<PathBuf>,
+    pub postgres_url: Option<String>,
+    pub postgres_ssl_root_cert: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
@@ -28,6 +31,7 @@ pub struct BackendConfig {
 pub enum BackendKind {
     #[default]
     Sqlite,
+    Postgres,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -83,6 +87,48 @@ impl AppConfig {
 
         default_sqlite_path()
     }
+
+    pub fn resolve_postgres_url(&self) -> Result<String> {
+        if let Some(url) = postgres_url_env()? {
+            return Ok(url);
+        }
+
+        self.backend.postgres_url.clone().ok_or_else(|| {
+            anyhow!("Postgres backend requires backend.postgres_url or TASKFORCE_POSTGRES_URL")
+        })
+    }
+
+    pub fn resolve_postgres_ssl_root_cert(&self) -> Result<Option<PathBuf>> {
+        if let Some(path) = postgres_ssl_root_cert_env()? {
+            return Ok(Some(path));
+        }
+
+        Ok(self.backend.postgres_ssl_root_cert.clone())
+    }
+}
+
+impl fmt::Debug for AppConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AppConfig")
+            .field("sqlite_path", &self.sqlite_path)
+            .field("backend", &self.backend)
+            .field("server", &self.server)
+            .finish()
+    }
+}
+
+impl fmt::Debug for BackendConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let postgres_url = self.postgres_url.as_ref().map(|_| "<redacted>");
+        formatter
+            .debug_struct("BackendConfig")
+            .field("kind", &self.kind)
+            .field("sqlite_path", &self.sqlite_path)
+            .field("postgres_url", &postgres_url)
+            .field("postgres_ssl_root_cert", &self.postgres_ssl_root_cert)
+            .finish()
+    }
 }
 
 pub fn config_path() -> Option<PathBuf> {
@@ -105,6 +151,21 @@ fn config_dir() -> Option<PathBuf> {
 
 pub fn sqlite_path_env() -> Result<Option<PathBuf>> {
     match std::env::var_os("TASKFORCE_SQLITE_PATH") {
+        Some(path) => Ok(Some(PathBuf::from(path))),
+        None => Ok(None),
+    }
+}
+
+pub fn postgres_url_env() -> Result<Option<String>> {
+    match std::env::var("TASKFORCE_POSTGRES_URL") {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(err) => Err(anyhow!("failed to read TASKFORCE_POSTGRES_URL: {err}")),
+    }
+}
+
+pub fn postgres_ssl_root_cert_env() -> Result<Option<PathBuf>> {
+    match std::env::var_os("TASKFORCE_POSTGRES_SSL_ROOT_CERT") {
         Some(path) => Ok(Some(PathBuf::from(path))),
         None => Ok(None),
     }
@@ -188,6 +249,51 @@ mod tests {
         );
         fs::remove_file(path)?;
         Ok(())
+    }
+
+    #[test]
+    fn loads_postgres_backend_settings_from_toml() -> Result<()> {
+        let path = unique_temp_path("taskforce-postgres-config");
+        fs::write(
+            &path,
+            "[backend]\nkind = \"postgres\"\npostgres_url = \"postgresql://user:pass@db.example.com/postgres?sslmode=require\"\npostgres_ssl_root_cert = \"/tmp/supabase-prod-ca-2021.crt\"\n",
+        )?;
+
+        let config = AppConfig::load_from_path(&path)?;
+
+        assert_eq!(config.backend.kind, BackendKind::Postgres);
+        assert_eq!(
+            config.backend.postgres_url.as_deref(),
+            Some("postgresql://user:pass@db.example.com/postgres?sslmode=require")
+        );
+        assert_eq!(
+            config.resolve_postgres_url()?,
+            "postgresql://user:pass@db.example.com/postgres?sslmode=require"
+        );
+        assert_eq!(
+            config.resolve_postgres_ssl_root_cert()?,
+            Some(PathBuf::from("/tmp/supabase-prod-ca-2021.crt"))
+        );
+        fs::remove_file(path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn redacts_postgres_url_in_debug_output() {
+        let config = AppConfig {
+            sqlite_path: None,
+            backend: super::BackendConfig {
+                kind: BackendKind::Postgres,
+                sqlite_path: None,
+                postgres_url: Some("postgresql://postgres:secret@db.example.com/postgres".into()),
+                postgres_ssl_root_cert: Some(PathBuf::from("/tmp/supabase-prod-ca-2021.crt")),
+            },
+            server: ServerConfig::default(),
+        };
+
+        let debug = format!("{config:?}");
+        assert!(debug.contains("postgres_url: Some(\"<redacted>\")"));
+        assert!(!debug.contains("secret"));
     }
 
     #[test]

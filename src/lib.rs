@@ -6,6 +6,7 @@ pub mod db_backend;
 pub mod i18n;
 pub mod local_backend;
 pub mod plugin;
+pub mod postgres_backend;
 pub mod web;
 
 #[path = "../examples/plugins/chatwork/mod.rs"]

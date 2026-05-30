@@ -9,6 +9,8 @@
 [backend]
 kind = "sqlite"
 # sqlite_path = "/home/<yourname>/.local/share/taskforce/taskforce.db"
+# postgres_url = "postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require"
+# postgres_ssl_root_cert = "/home/<yourname>/.config/taskforce/supabase-prod-ca-2021.crt"
 
 [server]
 # host = "127.0.0.1"

@@ -50,6 +50,7 @@ where
 {
     backend
         .list_pending()
+        .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
@@ -63,6 +64,7 @@ where
 {
     backend
         .get_task(id)
+        .await
         .map(Json)
         .map_err(map_task_error_status)
 }
@@ -325,6 +327,7 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use chrono::Utc;
@@ -340,20 +343,21 @@ mod tests {
         tasks: Vec<Task>,
     }
 
+    #[async_trait]
     impl TaskBackend for MockBackend {
-        fn list_pending(&self) -> anyhow::Result<Vec<Task>> {
+        async fn list_pending(&self) -> anyhow::Result<Vec<Task>> {
             Ok(self.tasks.clone())
         }
 
-        fn add(&self, _input: NewTaskInput) -> anyhow::Result<Task> {
+        async fn add(&self, _input: NewTaskInput) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
-        fn edit(&self, _id: u64, _input: UpdateTaskInput) -> anyhow::Result<Task> {
+        async fn edit(&self, _id: u64, _input: UpdateTaskInput) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
-        fn get_task(&self, id: u64) -> anyhow::Result<Task> {
+        async fn get_task(&self, id: u64) -> anyhow::Result<Task> {
             self.tasks
                 .iter()
                 .find(|task| task.id == Some(id))
@@ -361,7 +365,7 @@ mod tests {
                 .ok_or_else(|| anyhow::anyhow!("task {id} was not found"))
         }
 
-        fn set_extra(
+        async fn set_extra(
             &self,
             _id: u64,
             _key: &str,
@@ -370,31 +374,35 @@ mod tests {
             unreachable!("not used in web tests")
         }
 
-        fn get_extra(&self, _id: u64, _key: &str) -> anyhow::Result<Option<serde_json::Value>> {
+        async fn get_extra(
+            &self,
+            _id: u64,
+            _key: &str,
+        ) -> anyhow::Result<Option<serde_json::Value>> {
             unreachable!("not used in web tests")
         }
 
-        fn unset_extra(&self, _id: u64, _key: &str) -> anyhow::Result<Task> {
+        async fn unset_extra(&self, _id: u64, _key: &str) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
-        fn mark_done(&self, _id: u64) -> anyhow::Result<Task> {
+        async fn mark_done(&self, _id: u64) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
-        fn mark_abandoned(&self, _id: u64) -> anyhow::Result<Task> {
+        async fn mark_abandoned(&self, _id: u64) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
-        fn mark_mistaken(&self, _id: u64) -> anyhow::Result<Task> {
+        async fn mark_mistaken(&self, _id: u64) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
-        fn mark_duplicated(&self, _id: u64) -> anyhow::Result<Task> {
+        async fn mark_duplicated(&self, _id: u64) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
 
-        fn next_task(&self) -> anyhow::Result<Option<Task>> {
+        async fn next_task(&self) -> anyhow::Result<Option<Task>> {
             Ok(self.tasks.first().cloned())
         }
     }

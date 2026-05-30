@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow};
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Map;
@@ -109,8 +110,9 @@ impl LocalBackend {
     }
 }
 
+#[async_trait]
 impl TaskBackend for LocalBackend {
-    fn list_pending(&self) -> Result<Vec<Task>> {
+    async fn list_pending(&self) -> Result<Vec<Task>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
             r#"
@@ -154,7 +156,7 @@ impl TaskBackend for LocalBackend {
             .map_err(Into::into)
     }
 
-    fn add(&self, input: NewTaskInput) -> Result<Task> {
+    async fn add(&self, input: NewTaskInput) -> Result<Task> {
         let mut task = Task::new(None, generate_local_uuid(), input.title);
         task.core.description = input.description;
         task.core.target_date = input.target_date;
@@ -212,7 +214,7 @@ impl TaskBackend for LocalBackend {
         Ok(task)
     }
 
-    fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task> {
+    async fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task> {
         let connection = self.connection()?;
         let now = Utc::now().to_rfc3339();
         let mut task = self.fetch_task(id)?;
@@ -314,11 +316,11 @@ impl TaskBackend for LocalBackend {
         self.fetch_task(id)
     }
 
-    fn get_task(&self, id: u64) -> Result<Task> {
+    async fn get_task(&self, id: u64) -> Result<Task> {
         self.fetch_task(id)
     }
 
-    fn set_extra(&self, id: u64, key: &str, value: serde_json::Value) -> Result<Task> {
+    async fn set_extra(&self, id: u64, key: &str, value: serde_json::Value) -> Result<Task> {
         let connection = self.connection()?;
         let mut task = self.fetch_task(id)?;
         task.extra.insert(key.to_string(), value);
@@ -335,12 +337,12 @@ impl TaskBackend for LocalBackend {
         self.fetch_task(id)
     }
 
-    fn get_extra(&self, id: u64, key: &str) -> Result<Option<serde_json::Value>> {
+    async fn get_extra(&self, id: u64, key: &str) -> Result<Option<serde_json::Value>> {
         let task = self.fetch_task(id)?;
         Ok(task.extra.get(key).cloned())
     }
 
-    fn unset_extra(&self, id: u64, key: &str) -> Result<Task> {
+    async fn unset_extra(&self, id: u64, key: &str) -> Result<Task> {
         let connection = self.connection()?;
         let mut task = self.fetch_task(id)?;
         task.extra.remove(key);
@@ -357,24 +359,24 @@ impl TaskBackend for LocalBackend {
         self.fetch_task(id)
     }
 
-    fn mark_done(&self, id: u64) -> Result<Task> {
+    async fn mark_done(&self, id: u64) -> Result<Task> {
         update_task_status(self, id, TaskStatus::Done)
     }
 
-    fn mark_abandoned(&self, id: u64) -> Result<Task> {
+    async fn mark_abandoned(&self, id: u64) -> Result<Task> {
         update_task_status(self, id, TaskStatus::Abandoned)
     }
 
-    fn mark_mistaken(&self, id: u64) -> Result<Task> {
+    async fn mark_mistaken(&self, id: u64) -> Result<Task> {
         update_task_status(self, id, TaskStatus::Mistaken)
     }
 
-    fn mark_duplicated(&self, id: u64) -> Result<Task> {
+    async fn mark_duplicated(&self, id: u64) -> Result<Task> {
         update_task_status(self, id, TaskStatus::Duplicated)
     }
 
-    fn next_task(&self) -> Result<Option<Task>> {
-        Ok(self.list_pending()?.into_iter().next())
+    async fn next_task(&self) -> Result<Option<Task>> {
+        Ok(self.list_pending().await?.into_iter().next())
     }
 }
 
@@ -556,18 +558,20 @@ mod tests {
     use super::LocalBackend;
     use crate::backend::{NewTaskInput, TaskBackend, UpdateTaskInput};
 
-    #[test]
-    fn add_and_list_pending_tasks() -> Result<()> {
+    #[tokio::test]
+    async fn add_and_list_pending_tasks() -> Result<()> {
         let backend = LocalBackend::new(unique_db_path("taskforce-local-backend"))?;
 
-        let added = backend.add(NewTaskInput {
-            title: "Ship SQLite backend".into(),
-            description: Some("Add a structured backend".into()),
-            deadline: Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date")),
-            tags: vec!["release".into()],
-            ..Default::default()
-        })?;
-        let tasks = backend.list_pending()?;
+        let added = backend
+            .add(NewTaskInput {
+                title: "Ship SQLite backend".into(),
+                description: Some("Add a structured backend".into()),
+                deadline: Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date")),
+                tags: vec!["release".into()],
+                ..Default::default()
+            })
+            .await?;
+        let tasks = backend.list_pending().await?;
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, added.id);
@@ -584,24 +588,28 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn edit_done_and_terminal_states() -> Result<()> {
+    #[tokio::test]
+    async fn edit_done_and_terminal_states() -> Result<()> {
         let backend = LocalBackend::new(unique_db_path("taskforce-local-backend-status"))?;
 
-        let added = backend.add(NewTaskInput {
-            title: "Old title".into(),
-            ..Default::default()
-        })?;
-        let edited = backend.edit(
-            added.id.expect("id"),
-            UpdateTaskInput {
-                title: Some("New title".into()),
-                description: Some("Updated task description".into()),
-                project: Some("taskforce".into()),
-                tags: Some(vec!["ops".into()]),
+        let added = backend
+            .add(NewTaskInput {
+                title: "Old title".into(),
                 ..Default::default()
-            },
-        )?;
+            })
+            .await?;
+        let edited = backend
+            .edit(
+                added.id.expect("id"),
+                UpdateTaskInput {
+                    title: Some("New title".into()),
+                    description: Some("Updated task description".into()),
+                    project: Some("taskforce".into()),
+                    tags: Some(vec!["ops".into()]),
+                    ..Default::default()
+                },
+            )
+            .await?;
         assert_eq!(edited.title(), "New title");
         assert_eq!(
             edited.core.description.as_deref(),
@@ -610,65 +618,77 @@ mod tests {
         assert_eq!(edited.core.project.as_deref(), Some("taskforce"));
         assert_eq!(edited.core.tags, vec!["ops"]);
 
-        let done = backend.mark_done(added.id.expect("id"))?;
+        let done = backend.mark_done(added.id.expect("id")).await?;
         assert_eq!(done.core.status, crate::backend::TaskStatus::Done);
 
-        let second = backend.add(NewTaskInput {
-            title: "Mistaken task".into(),
-            ..Default::default()
-        })?;
-        let mistaken = backend.mark_mistaken(second.id.expect("id"))?;
+        let second = backend
+            .add(NewTaskInput {
+                title: "Mistaken task".into(),
+                ..Default::default()
+            })
+            .await?;
+        let mistaken = backend.mark_mistaken(second.id.expect("id")).await?;
         assert_eq!(mistaken.core.status, crate::backend::TaskStatus::Mistaken);
 
-        let third = backend.add(NewTaskInput {
-            title: "Duplicated task".into(),
-            ..Default::default()
-        })?;
-        let duplicated = backend.mark_duplicated(third.id.expect("id"))?;
+        let third = backend
+            .add(NewTaskInput {
+                title: "Duplicated task".into(),
+                ..Default::default()
+            })
+            .await?;
+        let duplicated = backend.mark_duplicated(third.id.expect("id")).await?;
         assert_eq!(
             duplicated.core.status,
             crate::backend::TaskStatus::Duplicated
         );
 
-        let fourth = backend.add(NewTaskInput {
-            title: "Abandoned task".into(),
-            ..Default::default()
-        })?;
-        let abandoned = backend.mark_abandoned(fourth.id.expect("id"))?;
+        let fourth = backend
+            .add(NewTaskInput {
+                title: "Abandoned task".into(),
+                ..Default::default()
+            })
+            .await?;
+        let abandoned = backend.mark_abandoned(fourth.id.expect("id")).await?;
         assert_eq!(abandoned.core.status, crate::backend::TaskStatus::Abandoned);
         Ok(())
     }
 
-    #[test]
-    fn clears_optional_fields_and_updates_extra() -> Result<()> {
+    #[tokio::test]
+    async fn clears_optional_fields_and_updates_extra() -> Result<()> {
         let backend = LocalBackend::new(unique_db_path("taskforce-local-backend-extra"))?;
 
-        let added = backend.add(NewTaskInput {
-            title: "Structured task".into(),
-            deadline: Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date")),
-            project: Some("taskforce".into()),
-            ..Default::default()
-        })?;
+        let added = backend
+            .add(NewTaskInput {
+                title: "Structured task".into(),
+                deadline: Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date")),
+                project: Some("taskforce".into()),
+                ..Default::default()
+            })
+            .await?;
         let id = added.id.expect("id");
 
-        let edited = backend.edit(
-            id,
-            UpdateTaskInput {
-                clear_deadline: true,
-                clear_project: true,
-                ..Default::default()
-            },
-        )?;
+        let edited = backend
+            .edit(
+                id,
+                UpdateTaskInput {
+                    clear_deadline: true,
+                    clear_project: true,
+                    ..Default::default()
+                },
+            )
+            .await?;
         assert_eq!(edited.core.deadline, None);
         assert_eq!(edited.core.project, None);
 
-        backend.set_extra(id, "requester", serde_json::Value::String("ishii".into()))?;
+        backend
+            .set_extra(id, "requester", serde_json::Value::String("ishii".into()))
+            .await?;
         assert_eq!(
-            backend.get_extra(id, "requester")?,
+            backend.get_extra(id, "requester").await?,
             Some(serde_json::Value::String("ishii".into()))
         );
 
-        let edited = backend.unset_extra(id, "requester")?;
+        let edited = backend.unset_extra(id, "requester").await?;
         assert!(!edited.extra.contains_key("requester"));
         Ok(())
     }
