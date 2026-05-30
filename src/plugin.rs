@@ -1,6 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 pub type PluginId = &'static str;
 
@@ -158,14 +160,62 @@ impl PluginExtra {
 }
 
 pub fn plugin_manifests() -> Result<Vec<PluginManifest>> {
-    Ok(vec![crate::chatwork_plugin::manifest()?])
+    let manifests = plugin_manifests_in_dir(&plugin_root_dir())?;
+    #[cfg(test)]
+    if manifests.is_empty() {
+        return plugin_manifests_in_dir(&test_plugin_root_dir());
+    }
+
+    Ok(manifests)
+}
+
+fn plugin_manifests_in_dir(root: &Path) -> Result<Vec<PluginManifest>> {
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut manifests = Vec::new();
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let manifest_path = entry.path().join("manifest.toml");
+        if !manifest_path.is_file() {
+            continue;
+        }
+
+        let content = fs::read_to_string(&manifest_path)?;
+        let manifest: PluginManifest = toml::from_str(&content)?;
+        manifests.push(manifest);
+    }
+
+    manifests.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(manifests)
+}
+
+fn plugin_root_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins")
+}
+
+#[cfg(test)]
+fn test_plugin_root_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join("plugins")
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use serde_json::Value;
 
-    use super::{PluginExtra, PluginFieldPlacement, RenderBlock, plugin_manifests};
+    use super::{PluginExtra, PluginFieldPlacement, RenderBlock, plugin_manifests_in_dir};
 
     #[test]
     fn stores_values_under_plugin_namespaces() {
@@ -245,11 +295,30 @@ mod tests {
 
     #[test]
     fn loads_plugin_manifests() {
-        let manifests = plugin_manifests().expect("plugin manifests");
-        let chatwork = manifests
-            .iter()
-            .find(|manifest| manifest.id == "chatwork")
-            .expect("chatwork manifest");
+        let root = unique_temp_dir("taskforce-plugin-manifests");
+        let plugin_dir = root.join("chatwork");
+        fs::create_dir_all(&plugin_dir).expect("plugin dir");
+        fs::write(
+            plugin_dir.join("manifest.toml"),
+            r#"
+id = "chatwork"
+name = "Chatwork"
+
+[[custom_fields]]
+path = "render_blocks"
+label = "詳細"
+placement = "left"
+
+[[custom_fields]]
+path = "source"
+label = "Source"
+placement = "hidden"
+"#,
+        )
+        .expect("manifest");
+
+        let manifests = plugin_manifests_in_dir(&root).expect("plugin manifests");
+        let chatwork = manifests.first().expect("chatwork manifest");
 
         assert_eq!(chatwork.name, "Chatwork");
         assert!(chatwork.custom_fields.iter().any(|field| {
@@ -258,5 +327,15 @@ mod tests {
         assert!(chatwork.custom_fields.iter().any(|field| {
             field.path == "source" && field.placement == PluginFieldPlacement::Hidden
         }));
+
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{nanos}"))
     }
 }

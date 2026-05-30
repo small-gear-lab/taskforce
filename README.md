@@ -50,6 +50,8 @@ taskforce/
 - A sample environment file is available at `config/taskforce.env.sample`.
 - Copy it to `$XDG_CONFIG_HOME/taskforce/config.toml`, or `~/.config/taskforce/config.toml` if `XDG_CONFIG_HOME` is unset.
 - For env-based overrides, copy `config/taskforce.env.sample` to `$XDG_CONFIG_HOME/taskforce/taskforce.env`.
+- Enabled plugin manifests are loaded only from `plugins/<plugin-id>/manifest.toml`.
+- Catalog entries under `examples/plugins/` or `community/plugins/` are not loaded until you copy or symlink them into `plugins/`.
 - The database backend is selected with `[backend].kind`; `sqlite` and `postgres` are supported.
 - If `[backend].sqlite_path` and the legacy top-level `sqlite_path` are unset, taskforce uses `$XDG_DATA_HOME/taskforce/taskforce.db`, or `~/.local/share/taskforce/taskforce.db` if `XDG_DATA_HOME` is unset.
 - For Postgres, set `[backend].postgres_url` or `TASKFORCE_POSTGRES_URL`.
