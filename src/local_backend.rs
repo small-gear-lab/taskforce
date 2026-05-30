@@ -133,12 +133,12 @@ impl TaskBackend for LocalBackend {
               tasks.extra_json
             FROM tasks
             JOIN task_statuses ON task_statuses.id = tasks.status_id
-            WHERE task_statuses.name IN ('unstarted', 'active', 'pending')
+            WHERE task_statuses.name IN ('unstarted', 'active', 'suspended')
             ORDER BY
               CASE task_statuses.name
                 WHEN 'active' THEN 0
                 WHEN 'unstarted' THEN 1
-                WHEN 'pending' THEN 2
+                WHEN 'suspended' THEN 2
                 ELSE 3
               END ASC,
               CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
@@ -443,7 +443,7 @@ fn task_status_id(status: TaskStatus) -> i64 {
     match status {
         TaskStatus::Unstarted => 1,
         TaskStatus::Active => 2,
-        TaskStatus::Pending => 3,
+        TaskStatus::Suspended => 3,
         TaskStatus::Done => 4,
         TaskStatus::Abandoned => 5,
         TaskStatus::Mistaken => 6,
@@ -455,7 +455,7 @@ fn parse_task_status(value: &str) -> TaskStatus {
     match value {
         "unstarted" => TaskStatus::Unstarted,
         "active" => TaskStatus::Active,
-        "pending" => TaskStatus::Pending,
+        "pending" | "suspended" => TaskStatus::Suspended,
         "done" => TaskStatus::Done,
         "abandoned" => TaskStatus::Abandoned,
         "mistaken" => TaskStatus::Mistaken,
@@ -468,7 +468,7 @@ fn seed_task_statuses(connection: &Connection) -> Result<()> {
     let statuses = [
         (1_i64, "unstarted"),
         (2_i64, "active"),
-        (3_i64, "pending"),
+        (3_i64, "suspended"),
         (4_i64, "done"),
         (5_i64, "abandoned"),
         (6_i64, "mistaken"),
@@ -477,7 +477,8 @@ fn seed_task_statuses(connection: &Connection) -> Result<()> {
 
     for (id, name) in statuses {
         connection.execute(
-            "INSERT OR IGNORE INTO task_statuses (id, name) VALUES (?1, ?2)",
+            "INSERT INTO task_statuses (id, name) VALUES (?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name",
             params![id, name],
         )?;
     }
@@ -510,6 +511,7 @@ fn migrate_legacy_status_column(connection: &Connection) -> Result<()> {
          SET status_id = CASE status
             WHEN 'active' THEN 2
             WHEN 'pending' THEN 3
+            WHEN 'suspended' THEN 3
             WHEN 'done' THEN 4
             WHEN 'abandoned' THEN 5
             WHEN 'mistaken' THEN 6

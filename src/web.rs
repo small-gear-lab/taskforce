@@ -197,7 +197,7 @@ fn detail_config_json() -> String {
         "status_labels": {
             "unstarted": tr("unstarted"),
             "active": tr("active"),
-            "pending": tr("pending"),
+            "suspended": tr("suspended"),
             "done": tr("done"),
             "abandoned": tr("abandoned"),
             "mistaken": tr("mistaken"),

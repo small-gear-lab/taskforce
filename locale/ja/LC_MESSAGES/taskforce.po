@@ -203,7 +203,7 @@ msgstr "未着手"
 msgid "active"
 msgstr "進行中"
 
-msgid "pending"
+msgid "suspended"
 msgstr "保留中"
 
 msgid "done"

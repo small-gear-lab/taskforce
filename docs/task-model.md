@@ -61,7 +61,7 @@ Initial `TaskStatus` candidates:
 
 - `unstarted`
 - `active`
-- `pending`
+- `suspended`
 - `done`
 - `abandoned`
 - `mistaken`
