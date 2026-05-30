@@ -77,6 +77,7 @@ pub enum TaskStatus {
     #[default]
     Unstarted,
     Active,
+    Waiting,
     Suspended,
     Done,
     Abandoned,

@@ -212,6 +212,9 @@ msgstr "未着手"
 msgid "active"
 msgstr "進行中"
 
+msgid "waiting"
+msgstr "待ち状態"
+
 msgid "suspended"
 msgstr "保留中"
 

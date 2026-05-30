@@ -333,6 +333,7 @@ async fn seed_task_statuses(client: &Client) -> Result<()> {
         (5_i64, "abandoned"),
         (6_i64, "mistaken"),
         (7_i64, "duplicated"),
+        (8_i64, "waiting"),
     ];
 
     for (id, name) in statuses {
@@ -408,6 +409,7 @@ fn task_status_id(status: TaskStatus) -> i64 {
         TaskStatus::Abandoned => 5,
         TaskStatus::Mistaken => 6,
         TaskStatus::Duplicated => 7,
+        TaskStatus::Waiting => 8,
     }
 }
 
@@ -415,6 +417,7 @@ fn parse_task_status(value: &str) -> TaskStatus {
     match value {
         "unstarted" => TaskStatus::Unstarted,
         "active" => TaskStatus::Active,
+        "waiting" => TaskStatus::Waiting,
         "pending" | "suspended" => TaskStatus::Suspended,
         "done" => TaskStatus::Done,
         "abandoned" => TaskStatus::Abandoned,
@@ -542,13 +545,14 @@ SELECT
   tasks.extra_json
 FROM tasks
 JOIN task_statuses ON task_statuses.id = tasks.status_id
-WHERE task_statuses.name IN ('unstarted', 'active', 'suspended')
+WHERE task_statuses.name IN ('unstarted', 'active', 'waiting', 'suspended')
 ORDER BY
   CASE task_statuses.name
     WHEN 'active' THEN 0
     WHEN 'unstarted' THEN 1
-    WHEN 'suspended' THEN 2
-    ELSE 3
+    WHEN 'waiting' THEN 2
+    WHEN 'suspended' THEN 3
+    ELSE 4
   END ASC,
   CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
   deadline ASC,
