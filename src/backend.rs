@@ -148,6 +148,39 @@ pub enum AnnotationKind {
     Handover,
 }
 
+impl AnnotationKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Note => "note",
+            Self::Progress => "progress",
+            Self::Decision => "decision",
+            Self::Handover => "handover",
+        }
+    }
+}
+
+impl fmt::Display for AnnotationKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str((*self).as_str())
+    }
+}
+
+impl FromStr for AnnotationKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "note" => Ok(Self::Note),
+            "progress" => Ok(Self::Progress),
+            "decision" => Ok(Self::Decision),
+            "handover" => Ok(Self::Handover),
+            _ => Err(format!(
+                "invalid annotation kind `{value}`; expected one of: note, progress, decision, handover"
+            )),
+        }
+    }
+}
+
 impl Task {
     pub fn new(id: TaskId, uuid: String, title: String) -> Self {
         let now = Utc::now();
@@ -199,6 +232,7 @@ pub trait TaskBackend {
     async fn add(&self, input: NewTaskInput) -> Result<Task>;
     async fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task>;
     async fn get_task(&self, id: u64) -> Result<Task>;
+    async fn add_annotation(&self, id: u64, kind: AnnotationKind, body: String) -> Result<Task>;
     async fn set_status(&self, id: u64, status: TaskStatus) -> Result<Task>;
     async fn set_extra(&self, id: u64, key: &str, value: Value) -> Result<Task>;
     async fn get_extra(&self, id: u64, key: &str) -> Result<Option<Value>>;

@@ -72,8 +72,10 @@ cargo run -- edit 1 --clear-deadline --clear-project
 cargo run -- set 1 requester ishii
 cargo run -- get 1 requester
 cargo run -- unset 1 requester
+cargo run -- show 1
 cargo run -- status 1
 cargo run -- status 1 active
+cargo run -- note 1 "Waiting on design handoff" --kind progress
 cargo run -- search --where "status in ('active', 'waiting')"
 cargo run -- search --where "deadline between '2026-06-01' and '2026-06-30'" --where "chatwork.requester = '石井'"
 cargo run -- import-chatwork "https://www.chatwork.com/#!rid36219958-2111786210627420160"

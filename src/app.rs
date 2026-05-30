@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::NaiveDate;
 use serde_json::Value;
 
-use crate::backend::{NewTaskInput, Task, TaskBackend, UpdateTaskInput};
+use crate::backend::{Annotation, NewTaskInput, Task, TaskBackend, UpdateTaskInput};
 use crate::chatwork_plugin::import_chatwork_url;
 use crate::cli::{Cli, Commands};
 use crate::config::AppConfig;
@@ -21,6 +21,10 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Search { where_clauses } => {
             let tasks = client.search(&TaskSearch::new(where_clauses)).await?;
             print_tasks(&tasks);
+        }
+        Commands::Show { id } => {
+            let task = client.get_task(id).await?;
+            print_task_detail(&task)?;
         }
         Commands::Add {
             title,
@@ -117,6 +121,11 @@ pub async fn run(cli: Cli) -> Result<()> {
                 println!("{} {}", task.id_text(), task.core.status);
             }
         }
+        Commands::Note { id, body, kind } => {
+            let task = client.add_annotation(id, kind, body).await?;
+            let added = task.annotations.last().expect("annotation just added");
+            println!("noted {} [{}] {}", task.id_text(), added.kind, added.body);
+        }
         Commands::Get { id, key } => match client.get_extra(id, &key).await? {
             Some(value) => println!("{}", serde_json::to_string_pretty(&value)?),
             None => println!("null"),
@@ -154,6 +163,65 @@ fn print_tasks(tasks: &[Task]) {
     for task in tasks {
         println!("{} {}", task.id_text(), task.title());
     }
+}
+
+fn print_task_detail(task: &Task) -> Result<()> {
+    println!("id: {}", task.id_text());
+    println!("title: {}", task.title());
+    println!("status: {}", task.core.status);
+    if let Some(project) = &task.core.project {
+        println!("project: {project}");
+    }
+    if !task.core.tags.is_empty() {
+        println!("tags: {}", task.core.tags.join(", "));
+    }
+    println!("created_at: {}", task.core.created_at.to_rfc3339());
+    println!("updated_at: {}", task.core.updated_at.to_rfc3339());
+    if let Some(target_date) = task.core.target_date {
+        println!("target_date: {target_date}");
+    }
+    if let Some(deadline) = task.core.deadline {
+        println!("deadline: {deadline}");
+    }
+    if let Some(launch_date) = task.core.launch_date {
+        println!("launch_date: {launch_date}");
+    }
+    if let Some(target_time_hint) = &task.core.target_time_hint {
+        println!("target_time_hint: {target_time_hint}");
+    }
+    if let Some(deadline_time_hint) = &task.core.deadline_time_hint {
+        println!("deadline_time_hint: {deadline_time_hint}");
+    }
+    if let Some(launch_time_hint) = &task.core.launch_time_hint {
+        println!("launch_time_hint: {launch_time_hint}");
+    }
+    if let Some(description) = &task.core.description {
+        println!();
+        println!("description:");
+        println!("{description}");
+    }
+    if !task.annotations.is_empty() {
+        println!();
+        println!("annotations:");
+        for annotation in &task.annotations {
+            print_annotation(annotation);
+        }
+    }
+    if !task.extra.is_empty() {
+        println!();
+        println!("extra:");
+        println!("{}", serde_json::to_string_pretty(&task.extra)?);
+    }
+    Ok(())
+}
+
+fn print_annotation(annotation: &Annotation) {
+    println!(
+        "- [{}] {} {}",
+        annotation.kind,
+        annotation.created_at.to_rfc3339(),
+        annotation.body
+    );
 }
 
 fn parse_optional_date(value: Option<String>) -> Result<Option<NaiveDate>> {

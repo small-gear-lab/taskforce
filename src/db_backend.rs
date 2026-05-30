@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::backend::TaskStatus;
-use crate::backend::{NewTaskInput, Task, TaskBackend, UpdateTaskInput};
+use crate::backend::{AnnotationKind, NewTaskInput, Task, TaskBackend, UpdateTaskInput};
 use crate::config::{AppConfig, BackendKind};
 use crate::local_backend::LocalBackend;
 use crate::postgres_backend::PostgresBackend;
@@ -66,6 +66,13 @@ impl TaskBackend for ConfiguredBackend {
         match self {
             Self::Sqlite(backend) => backend.get_task(id).await,
             Self::Postgres(backend) => backend.get_task(id).await,
+        }
+    }
+
+    async fn add_annotation(&self, id: u64, kind: AnnotationKind, body: String) -> Result<Task> {
+        match self {
+            Self::Sqlite(backend) => backend.add_annotation(id, kind, body).await,
+            Self::Postgres(backend) => backend.add_annotation(id, kind, body).await,
         }
     }
 

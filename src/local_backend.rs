@@ -7,7 +7,9 @@ use chrono::{DateTime, NaiveDate, Utc};
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json::Map;
 
-use crate::backend::{NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput};
+use crate::backend::{
+    Annotation, AnnotationKind, NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput,
+};
 use crate::search::{TaskSearch, compile_sqlite};
 
 #[derive(Debug, Clone)]
@@ -104,10 +106,12 @@ impl LocalBackend {
             "#,
         )?;
 
-        statement
+        let mut task = statement
             .query_row(params![id], map_task_row)
             .optional()?
-            .ok_or_else(|| anyhow!("task {id} was not found"))
+            .ok_or_else(|| anyhow!("task {id} was not found"))?;
+        task.annotations = fetch_annotations(&connection, id)?;
+        Ok(task)
     }
 }
 
@@ -333,6 +337,17 @@ impl TaskBackend for LocalBackend {
         self.fetch_task(id)
     }
 
+    async fn add_annotation(&self, id: u64, kind: AnnotationKind, body: String) -> Result<Task> {
+        self.fetch_task(id)?;
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO task_annotations (task_id, created_at, kind, body) VALUES (?1, ?2, ?3, ?4)",
+            params![id, Utc::now().to_rfc3339(), kind.as_str(), body],
+        )?;
+
+        self.fetch_task(id)
+    }
+
     async fn set_status(&self, id: u64, status: TaskStatus) -> Result<Task> {
         update_task_status(self, id, status)
     }
@@ -411,6 +426,34 @@ fn update_task_status(backend: &LocalBackend, id: u64, status: TaskStatus) -> Re
     backend.fetch_task(id)
 }
 
+fn fetch_annotations(connection: &Connection, id: u64) -> Result<Vec<Annotation>> {
+    let mut statement = connection.prepare(
+        r#"
+        SELECT created_at, kind, body
+        FROM task_annotations
+        WHERE task_id = ?1
+        ORDER BY created_at ASC, id ASC
+        "#,
+    )?;
+    let rows = statement.query_map(params![id], |row| {
+        let created_at: String = row.get(0)?;
+        let kind: String = row.get(1)?;
+        let body: String = row.get(2)?;
+        Ok(Annotation {
+            created_at: DateTime::parse_from_rfc3339(&created_at)
+                .map(|value| value.with_timezone(&Utc))
+                .map_err(decode_error)?,
+            kind: parse_annotation_kind(&kind).map_err(|error| {
+                decode_error(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+            })?,
+            body,
+        })
+    })?;
+
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
+}
+
 fn map_task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
     let tags_json: String = row.get(14)?;
     let extra_json: String = row.get(15)?;
@@ -442,6 +485,10 @@ fn map_task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
     })
 }
 
+fn parse_annotation_kind(value: &str) -> std::result::Result<AnnotationKind, String> {
+    value.parse()
+}
+
 fn parse_datetime(value: &str) -> rusqlite::Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .map(|parsed| parsed.with_timezone(&Utc))
@@ -455,6 +502,10 @@ fn parse_optional_date(value: Option<String>) -> rusqlite::Result<Option<NaiveDa
 }
 
 fn json_decode_error(error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
+}
+
+fn decode_error(error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
 }
 

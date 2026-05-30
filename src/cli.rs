@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 
-use crate::backend::TaskStatus;
+use crate::backend::{AnnotationKind, TaskStatus};
 
 #[derive(Debug, Parser)]
 #[command(name = "taskforce")]
@@ -19,6 +19,9 @@ pub enum Commands {
     Search {
         #[arg(long = "where")]
         where_clauses: Vec<String>,
+    },
+    Show {
+        id: u64,
     },
     Add {
         title: String,
@@ -88,6 +91,12 @@ pub enum Commands {
         id: u64,
         status: Option<TaskStatus>,
     },
+    Note {
+        id: u64,
+        body: String,
+        #[arg(long, default_value = "note")]
+        kind: AnnotationKind,
+    },
     Get {
         id: u64,
         key: String,
@@ -110,7 +119,7 @@ pub enum Commands {
 mod tests {
     use clap::Parser;
 
-    use super::{Cli, Commands, TaskStatus};
+    use super::{AnnotationKind, Cli, Commands, TaskStatus};
 
     #[test]
     fn parses_edit_command() {
@@ -201,6 +210,32 @@ mod tests {
                 assert_eq!(where_clauses.len(), 2);
                 assert_eq!(where_clauses[0], "status = 'active'");
                 assert_eq!(where_clauses[1], "chatwork.requester = '石井'");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_show_and_note_commands() {
+        let cli = Cli::parse_from(["taskforce", "show", "12"]);
+        match cli.command {
+            Commands::Show { id } => assert_eq!(id, 12),
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let cli = Cli::parse_from([
+            "taskforce",
+            "note",
+            "7",
+            "waiting on design",
+            "--kind",
+            "progress",
+        ]);
+        match cli.command {
+            Commands::Note { id, body, kind } => {
+                assert_eq!(id, 7);
+                assert_eq!(body, "waiting on design");
+                assert_eq!(kind, AnnotationKind::Progress);
             }
             other => panic!("unexpected command: {other:?}"),
         }

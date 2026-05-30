@@ -336,7 +336,8 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::backend::{
-        CoreTaskFields, NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput,
+        AnnotationKind, CoreTaskFields, NewTaskInput, Task, TaskBackend, TaskStatus,
+        UpdateTaskInput,
     };
     use crate::search::TaskSearch;
 
@@ -369,6 +370,15 @@ mod tests {
                 .find(|task| task.id == Some(id))
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("task {id} was not found"))
+        }
+
+        async fn add_annotation(
+            &self,
+            _id: u64,
+            _kind: AnnotationKind,
+            _body: String,
+        ) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
         }
 
         async fn set_status(&self, _id: u64, _status: TaskStatus) -> anyhow::Result<Task> {

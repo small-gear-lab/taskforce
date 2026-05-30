@@ -11,7 +11,9 @@ use serde_json::{Map, Value};
 use tokio_postgres::{Client, Row};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
-use crate::backend::{NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput};
+use crate::backend::{
+    Annotation, AnnotationKind, NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput,
+};
 use crate::search::{TaskSearch, compile_postgres};
 
 #[derive(Debug, Clone)]
@@ -88,7 +90,9 @@ impl PostgresBackend {
             .await?;
 
         let row = row.ok_or_else(|| anyhow!("task {id} was not found"))?;
-        map_task_row(&row)
+        let mut task = map_task_row(&row)?;
+        task.annotations = fetch_annotations(&self.client, id).await?;
+        Ok(task)
     }
 }
 
@@ -282,6 +286,17 @@ impl TaskBackend for PostgresBackend {
         self.fetch_task(id).await
     }
 
+    async fn add_annotation(&self, id: u64, kind: AnnotationKind, body: String) -> Result<Task> {
+        self.fetch_task(id).await?;
+        self.client
+            .execute(
+                "INSERT INTO task_annotations (task_id, created_at, kind, body) VALUES ($1, $2, $3, $4)",
+                &[&(id as i64), &Utc::now(), &kind.as_str(), &body],
+            )
+            .await?;
+        self.fetch_task(id).await
+    }
+
     async fn set_status(&self, id: u64, status: TaskStatus) -> Result<Task> {
         update_task_status(self, id, status).await
     }
@@ -389,6 +404,30 @@ async fn update_task_status(
     backend.fetch_task(id).await
 }
 
+async fn fetch_annotations(client: &Client, id: u64) -> Result<Vec<Annotation>> {
+    let rows = client
+        .query(
+            r#"
+            SELECT created_at, kind, body
+            FROM task_annotations
+            WHERE task_id = $1
+            ORDER BY created_at ASC, id ASC
+            "#,
+            &[&(id as i64)],
+        )
+        .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            Ok(Annotation {
+                created_at: row.get("created_at"),
+                kind: parse_annotation_kind(&row.get::<_, String>("kind")),
+                body: row.get("body"),
+            })
+        })
+        .collect()
+}
+
 fn map_task_row(row: &Row) -> Result<Task> {
     let tags_json: Value = row.get("tags_json");
     let extra_json: Value = row.get("extra_json");
@@ -416,6 +455,10 @@ fn map_task_row(row: &Row) -> Result<Task> {
         annotations: Vec::new(),
         extra,
     })
+}
+
+fn parse_annotation_kind(value: &str) -> AnnotationKind {
+    value.parse().unwrap_or(AnnotationKind::Note)
 }
 
 fn task_status_id(status: TaskStatus) -> i64 {
