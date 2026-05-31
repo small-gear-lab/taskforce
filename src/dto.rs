@@ -1,7 +1,10 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::backend::{Annotation, CoreTaskFields, Task};
+
+const DESCRIPTION_PREVIEW_GRAPHEMES: usize = 72;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TaskDto {
@@ -10,6 +13,20 @@ pub struct TaskDto {
     pub core: CoreTaskFieldsDto,
     pub annotations: Vec<AnnotationDto>,
     pub extra: Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskListItemDto {
+    pub id: Option<u64>,
+    pub uuid: String,
+    pub title: String,
+    pub status: String,
+    pub tags: Vec<String>,
+    pub deadline: Option<String>,
+    pub target_date: Option<String>,
+    pub launch_date: Option<String>,
+    pub description_preview: Option<String>,
+    pub urgency: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,6 +61,27 @@ impl From<&Task> for TaskDto {
             core: CoreTaskFieldsDto::from(&task.core),
             annotations: task.annotations.iter().map(AnnotationDto::from).collect(),
             extra: canonicalize_object(&task.extra),
+        }
+    }
+}
+
+impl From<&Task> for TaskListItemDto {
+    fn from(task: &Task) -> Self {
+        Self {
+            id: task.id,
+            uuid: task.uuid.clone(),
+            title: task.core.title.clone(),
+            status: task.core.status.to_string(),
+            tags: task.core.tags.clone(),
+            deadline: task.core.deadline.map(|value| value.to_string()),
+            target_date: task.core.target_date.map(|value| value.to_string()),
+            launch_date: task.core.launch_date.map(|value| value.to_string()),
+            description_preview: task
+                .core
+                .description
+                .as_deref()
+                .map(|text| truncate_graphemes(text, DESCRIPTION_PREVIEW_GRAPHEMES)),
+            urgency: task.urgency(),
         }
     }
 }
@@ -95,5 +133,26 @@ fn canonicalize_value(value: &Value) -> Value {
         Value::Array(items) => Value::Array(items.iter().map(canonicalize_value).collect()),
         Value::Object(map) => canonicalize_object(map),
         other => other.clone(),
+    }
+}
+
+fn truncate_graphemes(text: &str, max_graphemes: usize) -> String {
+    let graphemes = text.graphemes(true).collect::<Vec<_>>();
+    if graphemes.len() <= max_graphemes {
+        return text.to_string();
+    }
+
+    format!("{}…", graphemes[..max_graphemes].concat())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_graphemes;
+
+    #[test]
+    fn truncates_by_grapheme_cluster() {
+        let text = "👨‍👩‍👧‍👦abc";
+        assert_eq!(truncate_graphemes(text, 1), "👨‍👩‍👧‍👦…");
+        assert_eq!(truncate_graphemes(text, 4), text);
     }
 }

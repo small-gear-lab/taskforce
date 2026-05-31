@@ -1,4 +1,6 @@
 use std::net::SocketAddr;
+use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use axum::extract::{Path, State};
@@ -9,7 +11,7 @@ use axum::{Json, Router, http::StatusCode};
 use serde_json::{Map, Value, json};
 
 use crate::backend::TaskBackend;
-use crate::dto::TaskDto;
+use crate::dto::{TaskDto, TaskListItemDto};
 use crate::i18n::tr;
 use crate::plugin::plugin_manifests;
 
@@ -47,14 +49,14 @@ async fn index() -> Html<String> {
 
 async fn api_tasks<B>(
     State(backend): State<B>,
-) -> Result<Json<Vec<TaskDto>>, axum::http::StatusCode>
+) -> Result<Json<Vec<TaskListItemDto>>, axum::http::StatusCode>
 where
     B: TaskBackend + Clone + Send + Sync + 'static,
 {
     backend
         .list_pending()
         .await
-        .map(|tasks| Json(tasks.iter().map(TaskDto::from).collect()))
+        .map(|tasks| Json(tasks.iter().map(TaskListItemDto::from).collect()))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
@@ -122,17 +124,12 @@ fn render_index_html() -> String {
     render_template(
         INDEX_HTML_TEMPLATE,
         &[
-            ("__LOCAL_TASK_CONSOLE__", tr("Local Task Console")),
-            (
-                "__INDEX_LEDE__",
-                tr(
-                    "Open tasks from your local taskforce database, served over a tiny local HTTP view.",
-                ),
-            ),
             ("__OPEN_TASKS__", tr("Open Tasks")),
             ("__REFRESH__", tr("Refresh")),
             ("__NO_OPEN_TASKS__", tr("No open tasks.")),
             ("__INDEX_CONFIG_JSON__", index_config_json()),
+            ("__INDEX_CSS_URL__", asset_url("/assets/index.css")),
+            ("__INDEX_JS_URL__", asset_url("/assets/index.js")),
         ],
     )
 }
@@ -150,6 +147,14 @@ fn render_detail_html() -> String {
             ("__PROJECT__", tr("Project")),
             ("__TAGS__", tr("Tags")),
             ("__DETAIL_CONFIG_JSON__", detail_config_json()),
+            (
+                "__TASK_DETAIL_CSS_URL__",
+                asset_url("/assets/task_detail.css"),
+            ),
+            (
+                "__TASK_DETAIL_JS_URL__",
+                asset_url("/assets/task_detail.js"),
+            ),
         ],
     )
 }
@@ -160,6 +165,20 @@ fn render_template(template: &str, replacements: &[(&str, String)]) -> String {
         rendered = rendered.replace(placeholder, replacement);
     }
     rendered
+}
+
+fn asset_url(path: &str) -> String {
+    format!("{path}?v={}", asset_version())
+}
+
+fn asset_version() -> &'static str {
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION.get_or_init(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs().to_string())
+            .unwrap_or_else(|_| "0".to_string())
+    })
 }
 
 fn plugin_fields_value() -> Result<Value> {
@@ -199,8 +218,8 @@ fn index_config_json() -> String {
             "target": tr("Target"),
             "launch": tr("Launch"),
             "no_deadline": tr("No deadline"),
-        }
-        ,
+            "tasks": tr("tasks"),
+        },
         "status_labels": {
             "unstarted": tr("unstarted"),
             "active": tr("active"),
@@ -258,16 +277,12 @@ const INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>taskforce</title>
-    <link rel="stylesheet" href="/assets/index.css" />
+    <link rel="stylesheet" href="__INDEX_CSS_URL__" />
   </head>
   <body>
     <main>
       <section class="hero">
-        <div class="eyebrow">__LOCAL_TASK_CONSOLE__</div>
         <h1>taskforce</h1>
-        <p class="lede">
-          __INDEX_LEDE__
-        </p>
       </section>
       <section class="panel">
         <div class="panel-head">
@@ -279,7 +294,7 @@ const INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
       </section>
     </main>
     <script id="taskforce-index-config" type="application/json">__INDEX_CONFIG_JSON__</script>
-    <script src="/assets/index.js"></script>
+    <script src="__INDEX_JS_URL__"></script>
   </body>
 </html>
 "#;
@@ -290,7 +305,7 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>taskforce task</title>
-    <link rel="stylesheet" href="/assets/task_detail.css" />
+    <link rel="stylesheet" href="__TASK_DETAIL_CSS_URL__" />
   </head>
   <body>
     <main>
@@ -340,7 +355,7 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
       </section>
     </main>
     <script id="taskforce-detail-config" type="application/json">__DETAIL_CONFIG_JSON__</script>
-    <script src="/assets/task_detail.js"></script>
+    <script src="__TASK_DETAIL_JS_URL__"></script>
   </body>
 </html>
 "#;
@@ -521,8 +536,8 @@ mod tests {
         let text = String::from_utf8(body.to_vec()).expect("utf8");
         assert!(text.contains("taskforce"));
         assert!(text.contains("Open Tasks"));
-        assert!(text.contains("/assets/index.css"));
-        assert!(text.contains("/assets/index.js"));
+        assert!(text.contains("/assets/index.css?v="));
+        assert!(text.contains("/assets/index.js?v="));
         assert!(text.contains("taskforce-index-config"));
     }
 
@@ -545,9 +560,12 @@ mod tests {
             .await
             .expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
-        assert!(text.contains("statusLabel(task.core.status)"));
+        assert!(text.contains("statusLabel(status)"));
         assert!(text.contains("label(\"deadline\", \"Deadline\")"));
-        assert!(text.contains("task-status--${task.core.status}"));
+        assert!(text.contains("task-group-details"));
+        assert!(text.contains("task-status--${status}"));
+        assert!(text.contains("groupTasks(tasks)"));
+        assert!(text.contains("task-group-chevron"));
         assert!(text.contains("task-meta-item--deadline"));
     }
 
@@ -620,8 +638,8 @@ mod tests {
         let page_text = String::from_utf8(page_body.to_vec()).expect("utf8");
         assert!(page_text.contains("Description"));
         assert!(page_text.contains("Back to Open Tasks"));
-        assert!(page_text.contains("/assets/task_detail.css"));
-        assert!(page_text.contains("/assets/task_detail.js"));
+        assert!(page_text.contains("/assets/task_detail.css?v="));
+        assert!(page_text.contains("/assets/task_detail.js?v="));
         assert!(page_text.contains("taskforce-detail-config"));
     }
 
