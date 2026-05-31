@@ -13,6 +13,9 @@ msgstr ""
 msgid "GitHub Repo"
 msgstr "GitHubリポジトリ"
 
+msgid "GitHub"
+msgstr "GitHub"
+
 msgid "Repository"
 msgstr "リポジトリ"
 

@@ -15,11 +15,19 @@ pub struct PluginManifest {
     pub id: String,
     pub name: String,
     #[serde(default)]
+    pub group: Option<PluginManifestGroup>,
+    #[serde(default)]
     pub i18n_domain: Option<String>,
     #[serde(default)]
     pub custom_fields: Vec<PluginCustomField>,
     #[serde(skip)]
     pub root_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginManifestGroup {
+    pub id: String,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -170,10 +178,19 @@ impl PluginExtra {
 pub fn plugin_manifests() -> Result<Vec<PluginManifest>> {
     let manifests = plugin_manifests_in_dir(&plugin_root_dir())?;
     #[cfg(test)]
-    if manifests.is_empty() {
-        return plugin_manifests_in_dir(&test_plugin_root_dir());
+    {
+        let mut merged = manifests;
+        for manifest in plugin_manifests_in_dir(&test_plugin_root_dir())? {
+            if merged.iter().any(|existing| existing.id == manifest.id) {
+                continue;
+            }
+            merged.push(manifest);
+        }
+        merged.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(merged)
     }
 
+    #[cfg(not(test))]
     Ok(manifests)
 }
 
@@ -185,19 +202,19 @@ fn plugin_manifests_in_dir(root: &Path) -> Result<Vec<PluginManifest>> {
     let mut manifests = Vec::new();
     for entry in fs::read_dir(root)? {
         let entry = entry?;
-        let file_type = entry.file_type()?;
-        if !file_type.is_dir() {
+        let plugin_dir = entry.path();
+        if !plugin_dir.is_dir() {
             continue;
         }
 
-        let manifest_path = entry.path().join("manifest.toml");
+        let manifest_path = plugin_dir.join("manifest.toml");
         if !manifest_path.is_file() {
             continue;
         }
 
         let content = fs::read_to_string(&manifest_path)?;
         let mut manifest: PluginManifest = toml::from_str(&content)?;
-        manifest.root_dir = entry.path();
+        manifest.root_dir = plugin_dir;
         manifests.push(manifest);
     }
 
@@ -247,6 +264,8 @@ fn test_plugin_root_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs as unix_fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -366,6 +385,47 @@ placement = "hidden"
         }));
 
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn loads_plugin_manifests_from_symlinked_directories() {
+        let root = unique_temp_dir("taskforce-plugin-manifests-link");
+        let catalog_root = unique_temp_dir("taskforce-plugin-manifests-catalog");
+        fs::create_dir_all(&root).expect("root dir");
+        let plugin_dir = catalog_root.join("github-repo");
+        fs::create_dir_all(&plugin_dir).expect("plugin dir");
+        fs::write(
+            plugin_dir.join("manifest.toml"),
+            r#"
+id = "github-repo"
+name = "GitHub Repo"
+
+[group]
+id = "github"
+label = "GitHub"
+
+[[custom_fields]]
+path = "repository"
+label = "Repository"
+placement = "right"
+"#,
+        )
+        .expect("manifest");
+
+        unix_fs::symlink(&plugin_dir, root.join("github-repo")).expect("symlink");
+
+        let manifests = plugin_manifests_in_dir(&root).expect("plugin manifests");
+        let manifest = manifests.first().expect("github-repo manifest");
+
+        assert_eq!(manifest.id, "github-repo");
+        assert_eq!(
+            manifest.group.as_ref().map(|group| group.id.as_str()),
+            Some("github")
+        );
+
+        fs::remove_dir_all(root).expect("cleanup root");
+        fs::remove_dir_all(catalog_root).expect("cleanup catalog");
     }
 
     fn unique_temp_dir(prefix: &str) -> PathBuf {

@@ -1,6 +1,10 @@
 id = "github-repo"
 name = "GitHub Repo"
 
+[group]
+id = "github"
+label = "GitHub"
+
 [[custom_fields]]
 path = "repository"
 label = "Repository"

@@ -301,6 +301,10 @@ function pluginManifest(pluginKey) {
   return pluginFields[pluginKey] ?? null;
 }
 
+function pluginGroupMeta(pluginKey) {
+  return pluginManifest(pluginKey)?.group ?? null;
+}
+
 function pluginFieldMeta(path) {
   const [pluginKey, ...rest] = path.split(".");
   const manifest = pluginManifest(pluginKey);
@@ -627,6 +631,81 @@ function renderPluginExtraSection(pluginKey, pluginValue) {
   return section;
 }
 
+function renderGroupedPluginExtraSection(groupId, groupLabel, entries) {
+  const section = document.createElement("div");
+  section.className = "plugin-section";
+
+  const details = document.createElement("details");
+  details.open = true;
+
+  const summary = document.createElement("summary");
+  summary.className = "plugin-section__summary";
+  summary.innerHTML = `<span class="kv-key">${groupLabel}</span>`;
+  details.appendChild(summary);
+
+  const content = document.createElement("div");
+  content.className = "plugin-section__content";
+
+  const tools = document.createElement("div");
+  tools.className = "extra-tools";
+  tools.innerHTML = `
+    <div class="view-toggle" role="tablist" aria-label="${groupId}-data-view">
+      <button class="is-active" type="button">${label("tree", "Tree")}</button>
+      <button type="button">${label("raw", "Raw")}</button>
+    </div>
+    <button type="button">${label("expand_all", "Expand all")}</button>
+    <button type="button">${label("collapse_all", "Collapse all")}</button>
+  `;
+  content.appendChild(tools);
+
+  const treeView = document.createElement("div");
+  treeView.className = "extra-view tree-root";
+
+  let renderedAny = false;
+  for (const [pluginKey, pluginValue] of entries) {
+    if (pluginValue && typeof pluginValue === "object" && !Array.isArray(pluginValue)) {
+      const fields = Object.entries(pluginValue);
+      for (const [childKey, childValue] of fields) {
+        treeView.appendChild(
+          renderJsonTree(`${pluginKey}.${childKey}`, childKey, childValue)
+        );
+        renderedAny = true;
+      }
+    } else {
+      treeView.appendChild(renderJsonTree(pluginKey, pluginKey, pluginValue));
+      renderedAny = true;
+    }
+  }
+
+  if (!renderedAny) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = message("no_extra_data", "No extra data.");
+    treeView.appendChild(empty);
+  }
+  content.appendChild(treeView);
+
+  const rawView = document.createElement("pre");
+  rawView.className = "extra-view";
+  rawView.hidden = true;
+  rawView.textContent = JSON.stringify(Object.fromEntries(entries), null, 2);
+  content.appendChild(rawView);
+
+  details.appendChild(content);
+  section.appendChild(details);
+
+  wireExtraViewToggle(
+    tools.querySelector(".view-toggle button:first-child"),
+    tools.querySelector(".view-toggle button:last-child"),
+    tools.querySelectorAll("button")[2],
+    tools.querySelectorAll("button")[3],
+    treeView,
+    rawView
+  );
+
+  return section;
+}
+
 function renderPluginExtraSections(container, extra) {
   const namespaces = Object.entries(normalizePluginExtra(extra));
 
@@ -638,8 +717,32 @@ function renderPluginExtraSections(container, extra) {
     return;
   }
 
+  const grouped = new Map();
+
   for (const [pluginKey, pluginValue] of namespaces) {
-    container.appendChild(renderPluginExtraSection(pluginKey, pluginValue));
+    const group = pluginGroupMeta(pluginKey);
+    if (!group) {
+      container.appendChild(renderPluginExtraSection(pluginKey, pluginValue));
+      continue;
+    }
+
+    if (!grouped.has(group.id)) {
+      grouped.set(group.id, {
+        label: group.label ?? group.id,
+        entries: [],
+      });
+    }
+    grouped.get(group.id).entries.push([pluginKey, pluginValue]);
+  }
+
+  for (const [groupId, groupValue] of grouped.entries()) {
+    container.appendChild(
+      renderGroupedPluginExtraSection(
+        groupId,
+        groupValue.label,
+        groupValue.entries
+      )
+    );
   }
 }
 

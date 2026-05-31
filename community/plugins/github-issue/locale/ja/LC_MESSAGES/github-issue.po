@@ -13,6 +13,9 @@ msgstr ""
 msgid "GitHub Issue"
 msgstr "GitHub Issue"
 
+msgid "GitHub"
+msgstr "GitHub"
+
 msgid "Issue"
 msgstr "Issue"
 

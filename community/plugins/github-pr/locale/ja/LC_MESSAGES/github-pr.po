@@ -13,6 +13,9 @@ msgstr ""
 msgid "GitHub PR"
 msgstr "GitHub PR"
 
+msgid "GitHub"
+msgstr "GitHub"
+
 msgid "Pull Request"
 msgstr "プルリクエスト"
 

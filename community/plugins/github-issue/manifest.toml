@@ -1,6 +1,10 @@
 id = "github-issue"
 name = "GitHub Issue"
 
+[group]
+id = "github"
+label = "GitHub"
+
 [[custom_fields]]
 path = "issue"
 label = "Issue"

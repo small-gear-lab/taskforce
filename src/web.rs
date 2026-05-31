@@ -252,6 +252,10 @@ fn plugin_fields_value() -> Result<Value> {
             manifest.id.clone(),
             json!({
                 "name": tr_plugin(&manifest, &manifest.name),
+                "group": manifest.group.as_ref().map(|group| json!({
+                    "id": group.id,
+                    "label": tr_plugin(&manifest, &group.label),
+                })),
                 "fields": fields,
             }),
         );

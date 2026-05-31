@@ -1,6 +1,10 @@
 id = "github-pr"
 name = "GitHub PR"
 
+[group]
+id = "github"
+label = "GitHub"
+
 [[custom_fields]]
 path = "pull_request"
 label = "Pull Request"
