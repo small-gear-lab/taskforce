@@ -36,6 +36,7 @@ where
         .route("/tasks/all", get(all_tasks))
         .route("/assets/index.css", get(index_css_asset))
         .route("/assets/index.js", get(index_js_asset))
+        .route("/assets/favicon.svg", get(favicon_asset))
         .route("/assets/task_detail.css", get(task_detail_css_asset))
         .route("/assets/task_detail.js", get(task_detail_js_asset))
         .route("/api/tasks", get(api_tasks::<B>))
@@ -337,6 +338,13 @@ async fn task_detail_css_asset() -> impl IntoResponse {
     )
 }
 
+async fn favicon_asset() -> impl IntoResponse {
+    (
+        [("content-type", "image/svg+xml; charset=utf-8")],
+        include_str!("../assets/favicon.svg"),
+    )
+}
+
 fn map_task_error_status(error: anyhow::Error) -> StatusCode {
     if error.to_string().contains("not found") {
         StatusCode::NOT_FOUND
@@ -450,6 +458,7 @@ fn render_search_html() -> String {
                     ],
                 ),
             ),
+            ("__FAVICON_URL__", asset_url("/assets/favicon.svg")),
             ("__INDEX_CSS_URL__", asset_url("/assets/index.css")),
             ("__INDEX_JS_URL__", asset_url("/assets/index.js")),
         ],
@@ -470,6 +479,7 @@ fn render_detail_html() -> String {
             ("__PROJECT__", tr("Project")),
             ("__TAGS__", tr("Tags")),
             ("__DETAIL_CONFIG_JSON__", detail_config_json()),
+            ("__FAVICON_URL__", asset_url("/assets/favicon.svg")),
             (
                 "__TASK_DETAIL_CSS_URL__",
                 asset_url("/assets/task_detail.css"),
@@ -517,6 +527,7 @@ fn render_index_page(
                 "__INDEX_CONFIG_JSON__",
                 index_config_json_for_api(api_url, &empty_message, status_order, open_statuses),
             ),
+            ("__FAVICON_URL__", asset_url("/assets/favicon.svg")),
             ("__INDEX_CSS_URL__", asset_url("/assets/index.css")),
             ("__INDEX_JS_URL__", asset_url("/assets/index.js")),
         ],
@@ -772,6 +783,7 @@ const INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>taskforce</title>
+    <link rel="icon" href="__FAVICON_URL__" type="image/svg+xml" />
     <link rel="stylesheet" href="__INDEX_CSS_URL__" />
   </head>
   <body>
@@ -812,6 +824,7 @@ const SEARCH_INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>taskforce search</title>
+    <link rel="icon" href="__FAVICON_URL__" type="image/svg+xml" />
     <link rel="stylesheet" href="__INDEX_CSS_URL__" />
   </head>
   <body>
@@ -885,6 +898,7 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>taskforce task</title>
+    <link rel="icon" href="__FAVICON_URL__" type="image/svg+xml" />
     <link rel="stylesheet" href="__TASK_DETAIL_CSS_URL__" />
   </head>
   <body>
