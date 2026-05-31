@@ -304,11 +304,25 @@ h1 {
 }
 
 .tag {
+  display: inline-flex;
+  align-items: center;
   border-radius: 999px;
   background: rgba(33, 69, 61, 0.09);
   color: var(--accent-2);
   padding: 7px 12px;
   font-size: 14px;
+  text-decoration: none;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+  border: 1px solid rgba(33, 69, 61, 0.12);
+}
+
+.tag:hover {
+  color: #16322c;
+  background: rgba(33, 69, 61, 0.15);
+  border-color: rgba(33, 69, 61, 0.2);
 }
 
 pre {

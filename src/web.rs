@@ -37,8 +37,10 @@ where
         .route("/assets/task_detail.css", get(task_detail_css_asset))
         .route("/assets/task_detail.js", get(task_detail_js_asset))
         .route("/api/tasks", get(api_tasks::<B>))
+        .route("/api/tags/{tag}/tasks", get(api_tag_tasks::<B>))
         .route("/api/tasks/{id}", get(api_task::<B>))
         .route("/api/plugin-manifests", get(api_plugin_manifests))
+        .route("/tags/{tag}", get(tag_tasks))
         .route("/tasks/{id}", get(task_detail))
         .with_state(backend)
 }
@@ -57,6 +59,28 @@ where
         .list_pending()
         .await
         .map(|tasks| Json(tasks.iter().map(TaskListItemDto::from).collect()))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn api_tag_tasks<B>(
+    Path(tag): Path<String>,
+    State(backend): State<B>,
+) -> Result<Json<Vec<TaskListItemDto>>, axum::http::StatusCode>
+where
+    B: TaskBackend + Clone + Send + Sync + 'static,
+{
+    backend
+        .list_pending()
+        .await
+        .map(|tasks| {
+            Json(
+                tasks
+                    .iter()
+                    .filter(|task| task.core.tags.iter().any(|candidate| candidate == &tag))
+                    .map(TaskListItemDto::from)
+                    .collect(),
+            )
+        })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
@@ -82,6 +106,10 @@ async fn api_plugin_manifests() -> Result<Json<Value>, StatusCode> {
 
 async fn task_detail(Path(_id): Path<u64>) -> Html<String> {
     Html(render_detail_html())
+}
+
+async fn tag_tasks(Path(tag): Path<String>) -> Html<String> {
+    Html(render_tag_index_html(&tag))
 }
 
 async fn index_js_asset() -> impl IntoResponse {
@@ -159,6 +187,30 @@ fn render_detail_html() -> String {
     )
 }
 
+fn render_tag_index_html(tag: &str) -> String {
+    render_template(
+        TAG_INDEX_HTML_TEMPLATE,
+        &[
+            (
+                "__TAG_TITLE__",
+                escape_html(&format!("{}: #{tag}", tr("Tag"))),
+            ),
+            ("__OPEN_TASKS__", tr("Open Tasks")),
+            ("__BACK_TO_OPEN_TASKS__", tr("Back to Open Tasks")),
+            ("__REFRESH__", tr("Refresh")),
+            (
+                "__INDEX_CONFIG_JSON__",
+                index_config_json_for_api(
+                    &format!("/api/tags/{}/tasks", encode_path_segment(tag)),
+                    &tr("No open tasks with this tag."),
+                ),
+            ),
+            ("__INDEX_CSS_URL__", asset_url("/assets/index.css")),
+            ("__INDEX_JS_URL__", asset_url("/assets/index.js")),
+        ],
+    )
+}
+
 fn render_template(template: &str, replacements: &[(&str, String)]) -> String {
     let mut rendered = template.to_string();
     for (placeholder, replacement) in replacements {
@@ -209,10 +261,15 @@ fn plugin_fields_value() -> Result<Value> {
 }
 
 fn index_config_json() -> String {
+    index_config_json_for_api("/api/tasks", &tr("No open tasks."))
+}
+
+fn index_config_json_for_api(api_url: &str, no_open_tasks: &str) -> String {
     json!({
+        "api_url": api_url,
         "labels": {
             "urgency": tr("urgency"),
-            "no_open_tasks": tr("No open tasks."),
+            "no_open_tasks": no_open_tasks,
             "status": tr("Status"),
             "deadline": tr("Deadline"),
             "target": tr("Target"),
@@ -232,6 +289,27 @@ fn index_config_json() -> String {
         },
     })
     .to_string()
+}
+
+fn encode_path_segment(segment: &str) -> String {
+    let mut encoded = String::with_capacity(segment.len());
+    for byte in segment.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(byte as char)
+            }
+            other => encoded.push_str(&format!("%{other:02X}")),
+        }
+    }
+    encoded
+}
+
+fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn detail_config_json() -> String {
@@ -291,6 +369,37 @@ const INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
         </div>
         <ul id="task-list"></ul>
         <div id="empty" class="empty" hidden>__NO_OPEN_TASKS__</div>
+      </section>
+    </main>
+    <script id="taskforce-index-config" type="application/json">__INDEX_CONFIG_JSON__</script>
+    <script src="__INDEX_JS_URL__"></script>
+  </body>
+</html>
+"#;
+
+const TAG_INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>taskforce tag</title>
+    <link rel="stylesheet" href="__INDEX_CSS_URL__" />
+  </head>
+  <body>
+    <main>
+      <div class="topline">
+        <a class="backlink" href="/">__BACK_TO_OPEN_TASKS__</a>
+      </div>
+      <section class="hero">
+        <h1>__TAG_TITLE__</h1>
+      </section>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>__OPEN_TASKS__</h2>
+          <button id="refresh" type="button">__REFRESH__</button>
+        </div>
+        <ul id="task-list"></ul>
+        <div id="empty" class="empty" hidden></div>
       </section>
     </main>
     <script id="taskforce-index-config" type="application/json">__INDEX_CONFIG_JSON__</script>
@@ -516,6 +625,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_tag_tasks_returns_only_matching_open_tasks() {
+        let first = Task {
+            id: Some(3),
+            uuid: "abc".into(),
+            core: CoreTaskFields {
+                title: "Ship MVP".into(),
+                description: None,
+                status: TaskStatus::Unstarted,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                target_date: None,
+                deadline: None,
+                launch_date: None,
+                target_time_hint: None,
+                deadline_time_hint: None,
+                launch_time_hint: None,
+                project: None,
+                tags: vec!["release".into(), "ops".into()],
+            },
+            annotations: Vec::new(),
+            extra: Map::new(),
+        };
+        let second = Task {
+            id: Some(4),
+            uuid: "def".into(),
+            core: CoreTaskFields {
+                title: "Review design".into(),
+                description: None,
+                status: TaskStatus::Active,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                target_date: None,
+                deadline: None,
+                launch_date: None,
+                target_time_hint: None,
+                deadline_time_hint: None,
+                launch_time_hint: None,
+                project: None,
+                tags: vec!["design".into()],
+            },
+            annotations: Vec::new(),
+            extra: Map::new(),
+        };
+        let app = crate::web::app_router(MockBackend {
+            tasks: vec![first, second],
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/tags/release/tasks")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+        assert!(text.contains("\"title\":\"Ship MVP\""));
+        assert!(!text.contains("\"title\":\"Review design\""));
+    }
+
+    #[tokio::test]
     async fn index_page_renders_taskforce_heading() {
         let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
@@ -539,6 +715,30 @@ mod tests {
         assert!(text.contains("/assets/index.css?v="));
         assert!(text.contains("/assets/index.js?v="));
         assert!(text.contains("taskforce-index-config"));
+    }
+
+    #[tokio::test]
+    async fn tag_page_renders_tag_heading_and_backlink() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/tags/release")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+        assert!(text.contains("#release"));
+        assert!(text.contains("Back to Open Tasks"));
+        assert!(text.contains("/api/tags/release/tasks"));
     }
 
     #[tokio::test]

@@ -7,6 +7,7 @@ const taskList = document.getElementById("task-list");
 const emptyState = document.getElementById("empty");
 const refreshButton = document.getElementById("refresh");
 const statusOrder = ["active", "unstarted", "waiting", "suspended"];
+const apiUrl = config.api_url ?? "/api/tasks";
 
 function label(name, fallback) {
   return labels[name] ?? fallback;
@@ -20,6 +21,15 @@ function formatDate(value) {
   return value ?? null;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function createTaskItem(task) {
   const item = document.createElement("li");
   const deadline = formatDate(task.deadline);
@@ -28,7 +38,10 @@ function createTaskItem(task) {
   const descriptionPreview = task.description_preview;
   const hashtags = Array.isArray(task.tags)
     ? task.tags
-        .map((tag) => `<span class="task-hashtag">#${tag}</span>`)
+        .map(
+          (tag) =>
+            `<a class="task-hashtag" href="/tags/${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`,
+        )
         .join("")
     : "";
   item.innerHTML = `
@@ -38,7 +51,7 @@ function createTaskItem(task) {
         <a class="task-link" href="/tasks/${task.id ?? ""}"></a>
         <span class="task-status task-status--${task.status}">${statusLabel(task.status)}</span>
       </div>
-      ${descriptionPreview ? `<div class="task-description-preview">${descriptionPreview}</div>` : ""}
+      ${descriptionPreview ? `<div class="task-description-preview">${escapeHtml(descriptionPreview)}</div>` : ""}
       ${hashtags ? `<div class="task-hashtags">${hashtags}</div>` : ""}
       <div class="task-meta">
         <span class="task-meta-item task-meta-item--deadline">${label("deadline", "Deadline")} ${deadline ?? label("no_deadline", "No deadline")}</span>
@@ -70,7 +83,7 @@ function groupTasks(tasks) {
 }
 
 async function loadTasks() {
-  const response = await fetch("/api/tasks");
+  const response = await fetch(apiUrl);
   const tasks = await response.json();
 
   taskList.innerHTML = "";

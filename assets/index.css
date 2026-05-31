@@ -264,6 +264,17 @@ li:first-child {
   background: rgba(33, 69, 61, 0.1);
   border: 1px solid rgba(33, 69, 61, 0.14);
   word-break: break-word;
+  text-decoration: none;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.task-hashtag:hover {
+  color: #16322c;
+  background: rgba(33, 69, 61, 0.16);
+  border-color: rgba(33, 69, 61, 0.22);
 }
 
 .task-status {

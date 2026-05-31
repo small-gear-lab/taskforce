@@ -57,6 +57,14 @@ function createExternalLink(url, labelText = url) {
   return link;
 }
 
+function createTagLink(tag) {
+  const link = document.createElement("a");
+  link.href = `/tags/${encodeURIComponent(tag)}`;
+  link.className = "tag";
+  link.textContent = `#${tag}`;
+  return link;
+}
+
 function appendLinkifiedText(container, text) {
   const source = text ?? "";
   const urlPattern = /https?:\/\/\S+/gi;
@@ -812,10 +820,7 @@ async function loadTask() {
     tagList.appendChild(empty);
   } else {
     for (const tag of task.core.tags) {
-      const item = document.createElement("span");
-      item.className = "tag";
-      item.textContent = tag;
-      tagList.appendChild(item);
+      tagList.appendChild(createTagLink(tag));
     }
   }
 }

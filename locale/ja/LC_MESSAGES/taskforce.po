@@ -65,6 +65,9 @@ msgstr "プロジェクトとタグ"
 msgid "Project"
 msgstr "プロジェクト"
 
+msgid "Tag"
+msgstr "タグ"
+
 msgid "Tags"
 msgstr "タグ"
 
