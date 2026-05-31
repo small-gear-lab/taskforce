@@ -1,12 +1,302 @@
-<!--
-Copyright (c) 2026- Masaki Ishii
+<!-- Copyright (c) 2026- Masaki Ishii
 Copyright (c) 2026- Small Gear Lab
-SPDX-License-Identifier: MIT OR Apache-2.0
--->
+SPDX-License-Identifier: MIT OR Apache-2.0 -->
 
 # taskforce
 
-Personal task management system built around a Rust API, a web UI, and a local structured task store.
+`taskforce` is a personal task management system built around:
+
+- a Rust CLI
+- a local read-only web UI
+- a structured task store
+- manifest-driven plugin fields
+
+The project is optimized for single-user local operation first. It supports both SQLite and Postgres backends, including Supabase-hosted Postgres.
+
+## What it does
+
+- stores tasks with explicit core fields and structured extra fields
+- tracks annotations such as notes and progress updates
+- exposes a local web UI for browsing, searching, and inspecting tasks
+- lets plugins define extra fields and UI placement through manifests
+- keeps machine-friendly JSON output available from the CLI
+
+## Web UI policy
+
+The web UI is read-only by design.
+
+Task creation, editing, status changes, annotations, and all other mutating operations must go through the CLI or future machine-facing interfaces, not the browser UI.
+
+## Current feature set
+
+### CLI
+
+- `list`
+- `next`
+- `show`
+- `add`
+- `edit`
+- `status`
+- `note`
+- `set`
+- `get`
+- `unset`
+- `search`
+- `import-chatwork`
+- `serve`
+
+### Web UI
+
+- open task list
+- all task list
+- status pages
+- tag pages
+- search page
+- task detail page
+- navigation drawer
+
+### Storage
+
+- SQLite backend
+- Postgres backend
+- profile-based environment selection
+- Supabase-compatible TLS verification
+
+### Plugins
+
+- manifest-driven custom fields
+- plugin i18n catalogs
+- bundled example plugins under `examples/plugins/`
+- runtime opt-in through `plugins/<plugin-id>/`
+
+## Local setup
+
+### Config files
+
+- sample config: `config/config.toml.sample`
+- sample env file: `config/taskforce.env.sample`
+
+Base files:
+
+- `$XDG_CONFIG_HOME/taskforce/config.toml`
+- `$XDG_CONFIG_HOME/taskforce/taskforce.env`
+
+If `XDG_CONFIG_HOME` is unset, taskforce uses `~/.config/taskforce/`.
+
+Taskforce always loads the base files first.
+
+### Profiles
+
+Profiles are declared in `config.toml`:
+
+```toml
+[profiles]
+default = "production"
+
+[[profiles.items]]
+id = "production"
+config = "config.production.toml"
+env_file = "production.env"
+
+[[profiles.items]]
+id = "development"
+config = "config.development.toml"
+env_file = "development.env"
+```
+
+Profile resolution order:
+
+1. `--env <profile>`
+2. `TASKFORCE_ENV`
+3. `profiles.default`
+
+Relative `config` and `env_file` paths are resolved from the taskforce config directory.
+
+### Backends
+
+Select the backend with:
+
+```toml
+[backend]
+kind = "sqlite"
+```
+
+or:
+
+```toml
+[backend]
+kind = "postgres"
+```
+
+Supported backend kinds:
+
+- `sqlite`
+- `postgres`
+
+If SQLite paths are not configured, taskforce uses:
+
+- `$XDG_DATA_HOME/taskforce/taskforce.db`
+- or `~/.local/share/taskforce/taskforce.db`
+
+For Postgres, taskforce accepts either:
+
+- `TASKFORCE_POSTGRES_URL`
+- `[backend].postgres_url`
+
+or split environment variables:
+
+- `TASKFORCE_POSTGRES_HOST` (required)
+- `TASKFORCE_POSTGRES_PASS` (required)
+- `TASKFORCE_POSTGRES_USER` (default `postgres`)
+- `TASKFORCE_POSTGRES_PORT` (default `5432`)
+- `TASKFORCE_POSTGRES_DB` (default `postgres`)
+- `TASKFORCE_POSTGRES_SSLMODE` (default `require`)
+
+When TLS verification needs an explicit CA file, set:
+
+- `TASKFORCE_POSTGRES_SSL_ROOT_CERT`
+- or `[backend].postgres_ssl_root_cert`
+
+## Plugins
+
+Runtime plugin manifests are loaded only from:
+
+```text
+plugins/<plugin-id>/manifest.toml
+```
+
+The repository provides bundled examples under:
+
+```text
+examples/plugins/
+```
+
+Those bundled plugins are not active until you copy or symlink them into `plugins/`.
+
+Current bundled examples:
+
+- `chatwork`
+- `git`
+- `github-repo`
+- `github-issue`
+- `github-pr`
+
+`community/plugins/` is reserved for future external plugin contributions and is not scanned at runtime.
+
+## Common commands
+
+```bash
+cargo run -- list
+cargo run -- next
+cargo run -- show 12
+cargo run -- show 12 --json
+cargo run -- add "Rewrite spec" --status waiting --deadline 2026-06-05 --project taskforce --tag docs
+cargo run -- edit 12 "Rewrite spec v2" --clear-deadline --target-date 2026-06-03
+cargo run -- status 12
+cargo run -- status 12 active
+cargo run -- note 12 "Waiting on design handoff" --kind progress
+cargo run -- set 12 git.repository '"marie-222/taskforce"'
+cargo run -- get 12 git.repository
+cargo run -- unset 12 git.repository
+cargo run -- search --where "status in ('active', 'waiting')"
+cargo run -- search --where "chatwork.requester = '石井'" --json
+cargo run -- import-chatwork "https://www.chatwork.com/#!rid36219958-2111786210627420160"
+cargo run -- serve
+```
+
+## Search syntax
+
+`taskforce search` accepts repeated SQL-like `WHERE` clauses:
+
+```bash
+taskforce search --where "status = 'active'"
+taskforce search --where "status in ('active', 'waiting')"
+taskforce search --where "deadline between '2026-06-01' and '2026-06-30'"
+taskforce search --where "chatwork.requester = '石井'"
+taskforce search --where "(status = 'active' or status = 'waiting') and tag = 'release'"
+```
+
+Supported operators include:
+
+- `=`
+- `!=`
+- `<`
+- `<=`
+- `>`
+- `>=`
+- `in (...)`
+- `between ... and ...`
+- `like`
+- `is null`
+- `is not null`
+- `and`
+- `or`
+- `not`
+
+## JSON output
+
+Machine-friendly JSON output is available for:
+
+- `list --json`
+- `show --json`
+- `search --json`
+
+The CLI and web API share the same core DTO shapes where possible.
+
+## Development seed data
+
+The development seeder lives at:
+
+```text
+scripts/dev/seed_dummy_tasks.py
+```
+
+It builds and runs a dev-only Rust bulk seeder.
+
+Defaults:
+
+- `--env development`
+- `--count 24`
+- `--seed 42`
+- `--start 1`
+
+Examples:
+
+```bash
+scripts/dev/seed_dummy_tasks.py
+scripts/dev/seed_dummy_tasks.py --env development --seed 77 --start 301 --count 300
+target/debug/taskforce --env=development search --where "project = 'seed-77'"
+```
+
+## systemd user services
+
+Sample units:
+
+- `config/systemd/taskforce.service`
+- `config/systemd/taskforce-debug.service`
+- `config/systemd/taskforce-development-debug.service`
+
+Typical release setup:
+
+```bash
+cargo build --release
+systemctl --user daemon-reload
+systemctl --user enable --now taskforce.service
+```
+
+Typical local development setup:
+
+```bash
+cargo build
+systemctl --user restart taskforce-debug.service
+systemctl --user restart taskforce-development-debug.service
+```
+
+When Rust code or embedded assets change, always rebuild before restarting the debug services.
+
+## Related docs
+
+- [docs/task-model.md](docs/task-model.md)
 
 ## License
 
@@ -14,126 +304,3 @@ Licensed under either of the following, at your option:
 
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
-
-## Goals
-
-- Keep the core repository focused on the product backend.
-- Avoid a long-lived monorepo unless there is a clear operational need.
-- Leave room for a separate web UI repository and infra repository.
-
-## Repository role
-
-This repository is intended to hold the main application backend and domain logic.
-
-- Main product repository: `taskforce`
-- Separate frontend repository: `taskforce-web`
-- Optional infrastructure repository: `taskforce-infra`
-
-## Planned structure
-
-```text
-taskforce/
-├── README.md
-├── AGENTS.md
-├── Cargo.toml
-├── .gitignore
-├── src/
-│   └── main.rs
-├── crates/
-│   ├── taskcore/
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   └── taskapi/
-│       ├── Cargo.toml
-│       └── src/
-├── docs/
-│   ├── architecture.md
-│   └── api.md
-└── scripts/
-    └── dev/
-```
-
-## Notes
-
-- Sync storage and Web UI details should be designed to work without forcing a monorepo.
-
-## Local setup
-
-- A sample config is available at `config/config.toml.sample`.
-- A sample environment file is available at `config/taskforce.env.sample`.
-- Copy it to `$XDG_CONFIG_HOME/taskforce/config.toml`, or `~/.config/taskforce/config.toml` if `XDG_CONFIG_HOME` is unset.
-- For env-based overrides, copy `config/taskforce.env.sample` to `$XDG_CONFIG_HOME/taskforce/taskforce.env`.
-- Taskforce always reads the base files first: `config.toml` and `taskforce.env`.
-- If `TASKFORCE_ENV=<profile>` or `--env=<profile>` is set, taskforce also loads the matching profile entry from `[profiles]` / `[[profiles.items]]` in `config.toml`.
-- Enabled plugin manifests are loaded only from `plugins/<plugin-id>/manifest.toml`.
-- Catalog entries under `examples/plugins/` or `community/plugins/` are not loaded until you copy or symlink them into `plugins/`.
-- Example plugin manifests currently include `examples/plugins/chatwork/`, `examples/plugins/git/`, `examples/plugins/github-repo/`, `examples/plugins/github-issue/`, and `examples/plugins/github-pr/`.
-- The database backend is selected with `[backend].kind`; `sqlite` and `postgres` are supported.
-- If `[backend].sqlite_path` and the legacy top-level `sqlite_path` are unset, taskforce uses `$XDG_DATA_HOME/taskforce/taskforce.db`, or `~/.local/share/taskforce/taskforce.db` if `XDG_DATA_HOME` is unset.
-- For Postgres, set `[backend].postgres_url`, `TASKFORCE_POSTGRES_URL`, or the split env vars `TASKFORCE_POSTGRES_HOST` and `TASKFORCE_POSTGRES_PASS`. `TASKFORCE_POSTGRES_USER`, `TASKFORCE_POSTGRES_PORT`, `TASKFORCE_POSTGRES_DB`, and `TASKFORCE_POSTGRES_SSLMODE` are optional and default to `postgres`, `5432`, `postgres`, and `require`.
-- When your provider requires a custom CA certificate, set `[backend].postgres_ssl_root_cert` or `TASKFORCE_POSTGRES_SSL_ROOT_CERT` to the PEM file path.
-- Supabase works with a standard Postgres URL such as `postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require`, plus its downloadable CA certificate file when certificate verification needs an explicit root.
-
-## Current commands
-
-```bash
-cargo run -- list
-cargo run -- --env=development list
-cargo run -- add "Write docs" --deadline 2026-06-05 --project taskforce --tag docs
-cargo run -- add "Wait for design handoff" --status waiting --tag design
-cargo run -- edit 1 "Write better docs" --target-date 2026-06-02 --launch-date 2026-06-10
-cargo run -- edit 1 --clear-deadline --clear-project
-cargo run -- set 1 requester ishii
-cargo run -- get 1 requester
-cargo run -- unset 1 requester
-cargo run -- show 1
-cargo run -- show 1 --json
-cargo run -- status 1
-cargo run -- status 1 active
-cargo run -- note 1 "Waiting on design handoff" --kind progress
-cargo run -- search --where "status in ('active', 'waiting')"
-cargo run -- search --where "project = 'taskforce'" --json
-cargo run -- search --where "deadline between '2026-06-01' and '2026-06-30'" --where "chatwork.requester = '石井'"
-cargo run -- import-chatwork "https://www.chatwork.com/#!rid36219958-2111786210627420160"
-cargo run -- done 1
-TASKFORCE_SQLITE_PATH="$HOME/.local/share/taskforce/taskforce.db" cargo run -- serve
-TASKFORCE_POSTGRES_URL="postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require" cargo run -- serve
-TASKFORCE_POSTGRES_HOST="db.<project-ref>.supabase.co" TASKFORCE_POSTGRES_USER="postgres" TASKFORCE_POSTGRES_PASS="<password>" TASKFORCE_POSTGRES_PORT="5432" TASKFORCE_POSTGRES_DB="postgres" cargo run -- serve
-TASKFORCE_POSTGRES_SSL_ROOT_CERT="$HOME/.config/taskforce/supabase-prod-ca-2021.crt" cargo run -- serve
-```
-
-- `serve` binds to `127.0.0.1` and chooses a free port unless a host or port is configured.
-- Manual runs load `taskforce.env` first, then the selected profile's `env_file` when `TASKFORCE_ENV` or `--env=<profile>` resolves to a configured profile.
-
-## Development seed data
-
-- `scripts/dev/seed_dummy_tasks.py` builds and runs a dev-only Rust bulk seeder.
-- It defaults to `--env development --count 24 --seed 42 --start 1`.
-- Each run uses `project = "seed-<seed>"` unless `--project` is given.
-- Use `--start` to continue the same deterministic series from the middle without replacing the earlier rows.
-
-```bash
-scripts/dev/seed_dummy_tasks.py
-scripts/dev/seed_dummy_tasks.py --env development --seed 77 --start 301 --count 300
-target/debug/taskforce --env=development search --where "project = 'seed-77'" --where "status in ('active', 'waiting')"
-```
-
-## systemd user service
-
-- Build a release binary before wiring the service:
-
-```bash
-cargo build --release
-```
-
-- If you want a stable local URL, set `[server].port` in your config before enabling the service.
-- A sample user unit is available at `config/systemd/taskforce.service`.
-- Debug-build samples are available at `config/systemd/taskforce-debug.service` and `config/systemd/taskforce-development-debug.service`.
-- The sample unit reads `~/.config/taskforce/taskforce.env` via `EnvironmentFile=`. Set `TASKFORCE_ENV=production` there if you want the service to load the `production` profile from `config.toml`.
-- Install it under `~/.config/systemd/user/taskforce.service`, then run:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now taskforce.service
-systemctl --user status taskforce.service
-```

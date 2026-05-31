@@ -6,33 +6,32 @@ SPDX-License-Identifier: MIT OR Apache-2.0 -->
 
 ## Goal
 
-`taskforce` should provide a task-oriented CLI and local workflow on top of its own structured storage.
+`taskforce` uses a structured task model that supports:
 
-The model should support both:
+- a stable core schema for CLI, web UI, and future MCP tooling
+- annotations as first-class child records
+- plugin-defined extra fields without schema migrations for every workflow
 
-- a stable standard schema that the CLI and UI can rely on
-- user-defined extensions for project-specific structured fields
+The current implementation is local-first and single-user.
 
-## Design principles
+The web UI is intentionally read-only. Mutating operations belong to the CLI and future machine-facing interfaces, not to the browser UI.
 
-- Keep the core task fields explicit and strongly typed.
-- Allow arbitrary extra fields without schema migrations for every new workflow.
-- Preserve a task-focused CLI UX where practical, without inheriting external storage constraints.
-- Make backend replacement possible behind the existing `TaskBackend` abstraction.
-
-## High-level model
+## Top-level shape
 
 Each task consists of:
 
-- core fields
-- annotations
-- extra fields
+- `id`
+- `uuid`
+- `core`
+- `annotations`
+- `extra`
 
-Suggested shape:
+Current Rust shape:
 
 ```rust
 pub struct Task {
-    pub id: TaskId,
+    pub id: Option<u64>,
+    pub uuid: String,
     pub core: CoreTaskFields,
     pub annotations: Vec<Annotation>,
     pub extra: serde_json::Map<String, serde_json::Value>,
@@ -41,7 +40,7 @@ pub struct Task {
 
 ## Core fields
 
-These fields are part of the standard schema and may be assumed by CLI commands, filters, and the local web UI.
+Core fields are stable and assumed by the CLI, list pages, search, and detail pages.
 
 ```rust
 pub struct CoreTaskFields {
@@ -61,7 +60,9 @@ pub struct CoreTaskFields {
 }
 ```
 
-Initial `TaskStatus` candidates:
+### Task status
+
+Current statuses:
 
 - `unstarted`
 - `active`
@@ -72,19 +73,14 @@ Initial `TaskStatus` candidates:
 - `mistaken`
 - `duplicated`
 
-Why these are core:
+Operationally:
 
-- `title` is the primary label in CLI and UI
-- `description` gives the task model a plugin-independent standard body field
-- `status` drives default listing behavior
-- timestamps are necessary for sorting and auditability
-- `target_date`, `deadline`, and `launch_date` match the user's real task template needs
-- optional `*_time_hint` fields cover cases like `午前中` or `15:00まで` without forcing full timestamps everywhere
-- `project` and `tags` support practical task grouping
+- open task views focus on `active`, `unstarted`, `waiting`, and `suspended`
+- terminal statuses remain visible in all-task views and status-specific views
 
 ## Annotations
 
-Annotations are standard, structured child records rather than free text embedded in the main description.
+Annotations are structured records attached to tasks.
 
 ```rust
 pub struct Annotation {
@@ -94,161 +90,152 @@ pub struct Annotation {
 }
 ```
 
-Initial `AnnotationKind` candidates:
+Current kinds:
 
 - `note`
 - `progress`
 - `decision`
 - `handover`
 
-Annotations stay first-class because they are useful operationally, not because they mirror another tool's storage format.
+Annotations are part of the standard model rather than being folded into `description`.
 
 ## Extra fields
 
-Extra fields are user-defined structured fields stored as JSON values.
-
-In the long term, `extra` should be treated as the persisted merged result of extension outputs, not only as a bag of manually entered custom fields.
+`extra` stores plugin-defined or user-defined structured data as nested JSON values.
 
 Examples:
 
-- `requester`
-- `chatwork_url`
-- `room_id`
-- `message_id`
-- `target_sites`
-- `summary`
-- `purpose`
-- `raw_request`
+- `chatwork.requester`
+- `chatwork.request_url`
+- `git.repository`
+- `git.working_branch`
+- `github-repo.repository_url`
 
 Rules:
 
-- extra field keys must not collide with core field names
-- values may be `string`, `number`, `bool`, `array`, `object`, or `null`
-- CLI support should begin with string-oriented set/get flows, even if storage supports richer JSON
-- importer- or plugin-like features may contribute structured fields before persistence, but the stored shape should still collapse into `extra`
+- core fields stay in `core`
+- extra fields stay in `extra`
+- dotted CLI keys such as `git.repository` are stored as nested JSON objects
+- manifest-defined plugin fields control UI visibility
 
-## Extension direction
+## Plugin field model
 
-The system should eventually allow multiple extension producers to enrich a task before persistence.
+Plugins define fields through manifests under:
 
-Examples:
-
-- a Chatwork importer contributes `requester`, `room_id`, `message_id`, `source_url`
-- an urgency calculator contributes derived scheduling metadata
-- a workflow-specific extension contributes `target_sites`, `purpose`, or deployment metadata
-
-The important constraint is that these extension outputs should merge into the final `extra` payload instead of requiring every extension to add new top-level storage columns.
-
-## Description and search direction
-
-The task model should keep `core.description` as the standard description field even when plugins provide richer or source-specific descriptions.
-
-Recommended direction:
-
-- `core.description` is always available as the plugin-independent standard body field
-- plugin-specific descriptions remain in `extra.<plugin_id>.description`
-- UI rendering may prefer a plugin-provided description over `core.description`
-- storage should keep both, rather than overwriting the core field destructively
-
-Suggested display/search model:
-
-- `effective_description = plugin override ?? core.description`
-- default display uses `effective_description`
-- default search also uses `effective_description`
-- raw plugin descriptions remain available as provenance and may become opt-in secondary search targets later
-
-Why this split is useful:
-
-- the standard schema keeps a stable description field for generic tasks
-- plugin imports can preserve source-specific wording without losing the app-level description contract
-- future search can index a single canonical description field without double-counting both core and plugin text by default
-- plugin-specific raw descriptions remain available for debugging, auditability, or advanced source-aware search later
-
-## Storage direction
-
-The preferred long-term backend is SQLite.
-
-Recommended first schema:
-
-- `tasks` table for core fields
-- `task_annotations` table for annotations
-- `extra_json` column on `tasks` for user-defined fields
-
-Why this shape:
-
-- core fields remain queryable and indexable
-- annotations remain append-friendly and easy to filter
-- user extensions do not force frequent migrations
-
-Possible sketch:
-
-```sql
-CREATE TABLE tasks (
-  id INTEGER PRIMARY KEY,
-  title TEXT NOT NULL,
-  status TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  target_date TEXT,
-  deadline TEXT,
-  launch_date TEXT,
-  target_time_hint TEXT,
-  deadline_time_hint TEXT,
-  launch_time_hint TEXT,
-  project TEXT,
-  tags_json TEXT NOT NULL,
-  extra_json TEXT NOT NULL
-);
-
-CREATE TABLE task_annotations (
-  id INTEGER PRIMARY KEY,
-  task_id INTEGER NOT NULL,
-  created_at TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  body TEXT NOT NULL,
-  FOREIGN KEY(task_id) REFERENCES tasks(id)
-);
+```text
+plugins/<plugin-id>/manifest.toml
 ```
 
-## CLI implications
+Each field defines at least:
 
-The CLI should stay task-centric and compact where it helps:
+- `path`
+- `label`
+- `placement`
 
-- `add`
-- `list`
-- `done`
-- `abandon`
-- `mistake`
-- `duplicate`
-- `edit`
-- `next`
+Current placement meanings:
 
-Additional commands should support the structured model:
+- `left`
+- `right`
+- `hidden`
 
-- `annotate`
-- `set <id> <field> <value>`
-- `get <id> <field>`
-- `unset <id> <field>`
+### Runtime rules
 
-Expected behavior:
+- only plugins present in `plugins/` are considered active
+- plugins without an active manifest are treated as invalid in the UI
+- plugin fields not present in the manifest are ignored
+- plugin fields are not auto-promoted into core presentation even if names happen to match
 
-- core fields have dedicated flags or commands where appropriate
-- extra fields are addressed through `set/get/unset`
-- annotations are first-class instead of being pushed into `description`
+## UI presentation model
 
-## Migration direction
+### List views
 
-Near-term path:
+Open and filtered lists use a compact list item DTO with:
 
-1. Keep the current `TaskBackend` abstraction.
-2. Select concrete database backends through config.
-3. Use the local SQLite backend as the primary structured store.
-3. Gradually move CLI and UI behavior to target the structured model first.
+- title
+- status
+- schedule metadata
+- urgency
+- `description_preview`
+- tags
 
-## Non-goals for the first local backend
+`description_preview` is derived server-side and truncated by grapheme cluster.
+
+### Detail views
+
+The detail view is manifest-driven:
+
+- core rows are shown only when values exist
+- plugin rows are shown only when values exist and the field is declared in the active manifest
+- `left` and `right` plugin sections are rendered generically
+- related plugins may be grouped through manifest group metadata
+
+There is no plugin-specific special rendering path anymore. Chatwork, Git, and GitHub data all follow the same manifest rules.
+
+## Search model
+
+The current search system accepts SQL-like `WHERE` fragments and compiles them into backend-specific queries.
+
+Supported field categories:
+
+- core fields such as `status`, `title`, `project`, `deadline`
+- tag membership
+- plugin dotted paths such as `chatwork.requester`
+
+Supported operators include:
+
+- comparison operators
+- `in`
+- `between`
+- `like`
+- `is null`
+- boolean `and` / `or` / `not`
+
+The web UI search page builds these conditions from:
+
+- free word query
+- status checkboxes
+- tag input
+- optional raw `WHERE` clauses
+
+## Backends
+
+The task model is implemented behind `TaskBackend`.
+
+Current backends:
+
+- SQLite
+- Postgres
+
+Both backends store:
+
+- core task records
+- annotation records
+- JSON extra payloads
+
+The backend choice is configuration-driven and profile-aware.
+
+## Machine-facing DTO direction
+
+The current system already exposes stable JSON-friendly DTOs for:
+
+- list-style views
+- task detail views
+
+This is the intended bridge toward future automation and MCP server work.
+
+The design goal is:
+
+- one structured internal task model
+- one stable machine-facing JSON shape
+- multiple transports on top of that
+
+## Non-goals
+
+The current task model is not trying to solve:
 
 - multi-user sync
-- remote API design
-- arbitrary schema validation language
+- server-side collaborative editing
+- arbitrary schema validation languages
+- plugin execution sandboxes
 
-The first goal is a local, structured, single-user backend with a compact task-oriented CLI surface.
+The focus remains a local structured task workflow with extensible metadata.
