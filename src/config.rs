@@ -337,7 +337,11 @@ fn validate_environment_name(name: &str) -> Result<()> {
 }
 
 fn validate_postgres_host(host: &str) -> Result<()> {
-    if host.is_empty() || host.chars().any(|ch| ch.is_whitespace() || ch == '/' || ch == '@') {
+    if host.is_empty()
+        || host
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch == '/' || ch == '@')
+    {
         return Err(anyhow!("invalid TASKFORCE_POSTGRES_HOST: {host}"));
     }
 
