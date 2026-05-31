@@ -429,7 +429,6 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
         <header class="hero">
           <div class="meta-line" id="meta-line"></div>
           <h1 id="task-title">__LOADING_TASK__</h1>
-          <p class="hero-copy" id="task-abstract"></p>
         </header>
         <div class="grid">
           <section class="column">
@@ -437,24 +436,23 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
               <div class="section-label">__DESCRIPTION__</div>
               <p class="section-body" id="task-description"></p>
             </div>
-            <div class="section">
-              <div class="section-label">__ORIGINAL_REQUEST__</div>
-              <div class="section-body" id="task-original-request"></div>
+            <div class="section" id="task-plugin-left-section" hidden>
+              <div id="plugin-left-sections" class="kv-list"></div>
             </div>
           </section>
           <aside class="column">
-            <div class="section">
+            <div class="section" id="task-schedule-section">
               <div class="section-label">__SCHEDULE__</div>
               <div class="schedule" id="schedule"></div>
             </div>
-            <div class="section">
+            <div class="section" id="task-project-tags-section">
               <div class="section-label">__PROJECT_AND_TAGS__</div>
               <div class="kv-list">
-                <div class="kv-item">
+                <div class="kv-item" id="task-project-row">
                   <div class="kv-key">__PROJECT__</div>
                   <div class="kv-value" id="project-value"></div>
                 </div>
-                <div class="kv-item">
+                <div class="kv-item" id="task-tags-row">
                   <div class="kv-key">__TAGS__</div>
                   <div class="tag-list" id="tag-list"></div>
                 </div>
@@ -984,7 +982,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn detail_page_normalizes_legacy_chatwork_extra_and_flattens_plugin_root() {
+    async fn detail_page_filters_plugin_fields_by_manifest_placement() {
         let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
         let response = app
@@ -1003,13 +1001,15 @@ mod tests {
             .expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
-        assert!(text.contains("const legacyChatworkKeys = ["));
         assert!(text.contains("let pluginFields = {};"));
-        assert!(text.contains("function normalizeChatworkExtra(extra) {"));
-        assert!(text.contains("return extra.chatwork;"));
         assert!(text.contains("function pluginManifest(pluginKey) {"));
         assert!(text.contains("function pluginFieldMeta(path) {"));
         assert!(text.contains("function fieldPlacement(pluginKey, fieldKey) {"));
+        assert!(
+            text.contains(
+                "function normalizePluginExtra(extra, placements = new Set([\"right\"])) {"
+            )
+        );
         assert!(text.contains(
             "if (pluginValue && typeof pluginValue === \"object\" && !Array.isArray(pluginValue))"
         ));
@@ -1044,7 +1044,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn detail_page_uses_legacy_chatwork_extra_for_original_request_and_hides_source_tree() {
+    async fn detail_page_ignores_plugins_without_manifests() {
         let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
         let response = app
@@ -1063,14 +1063,16 @@ mod tests {
             .expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
-        assert!(text.contains("const chatwork = normalizeChatworkExtra(task.extra) ?? {};"));
         assert!(text.contains("fetch(\"/api/plugin-manifests\")"));
-        assert!(text.contains("return fieldPlacement(pluginKey, fieldKey) === \"right\";"));
-        assert!(text.contains("return parseChatworkRenderBlocks(source.body_raw);"));
+        assert!(text.contains(
+            "return pluginManifest(pluginKey)?.fields?.[fieldKey]?.placement ?? \"hidden\";"
+        ));
+        assert!(text.contains("function hasFieldDescendants(pluginKey, fieldKey, placements) {"));
+        assert!(text.contains("if (!pluginEnabled(key)) {"));
     }
 
     #[tokio::test]
-    async fn detail_page_prefers_render_blocks_for_original_request_and_hides_them_from_tree() {
+    async fn detail_page_renders_left_and_right_plugin_sections_generically() {
         let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
         let response = app
@@ -1090,9 +1092,10 @@ mod tests {
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
         assert!(text.contains(
-            "const renderBlocks = leftFieldValue(\"chatwork\", chatwork, \"render_blocks\");"
+            "const pluginLeftSection = document.getElementById(\"task-plugin-left-section\");"
         ));
-        assert!(text.contains("renderOriginalRequest("));
+        assert!(text.contains("renderPluginExtraSections("));
+        assert!(text.contains("new Set([\"left\"])"));
     }
 
     #[tokio::test]
@@ -1122,7 +1125,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn detail_page_supports_quote_and_rule_render_blocks() {
+    async fn detail_page_renders_generic_left_plugin_sections() {
         let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
         let response = app
@@ -1141,16 +1144,15 @@ mod tests {
             .expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
-        assert!(text.contains("if (rest.startsWith(\"[qt]\")) {"));
-        assert!(text.contains("if (rest.startsWith(\"[hr]\")) {"));
-        assert!(text.contains("kind: \"quote\""));
-        assert!(text.contains("kind: \"rule\""));
-        assert!(text.contains("block.kind === \"quote\""));
-        assert!(text.contains("block.kind === \"rule\""));
+        assert!(text.contains(
+            "const pluginLeftSections = document.getElementById(\"plugin-left-sections\");"
+        ));
+        assert!(text.contains("renderPluginExtraSections("));
+        assert!(text.contains("{ showEmpty: false }"));
     }
 
     #[tokio::test]
-    async fn detail_page_supports_nested_children_inside_quote_blocks() {
+    async fn detail_page_hides_missing_core_rows() {
         let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
 
         let response = app
@@ -1169,9 +1171,8 @@ mod tests {
             .expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
 
-        assert!(text.contains("children: [],"));
-        assert!(text.contains("if (Array.isArray(block.children) && block.children.length > 0) {"));
-        assert!(text.contains("quote.appendChild(children);"));
-        assert!(text.contains("children.className = \"request-block__children\";"));
+        assert!(text.contains("projectRow.hidden = !task.core.project;"));
+        assert!(text.contains("scheduleSection.hidden = scheduleCount === 0;"));
+        assert!(text.contains("projectTagsSection.hidden = projectRow.hidden && tagsRow.hidden;"));
     }
 }

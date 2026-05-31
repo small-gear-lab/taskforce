@@ -6,19 +6,6 @@ const statusLabels = config.status_labels ?? {};
 let pluginFields = {};
 
 const taskId = window.location.pathname.split("/").pop();
-const legacyChatworkKeys = [
-  "requester",
-  "request_url",
-  "related_request_url",
-  "summary",
-  "abstract",
-  "description",
-  "production_rollout",
-  "template_kind",
-  "target_sites",
-  "render_blocks",
-  "source",
-];
 
 function label(name, fallback) {
   return labels[name] ?? fallback;
@@ -39,11 +26,7 @@ function isExternalUrl(value) {
 function isUrlFieldPath(path) {
   return (
     path.endsWith(".url") ||
-    path.endsWith("_url") ||
-    path === "request_url" ||
-    path === "related_request_url" ||
-    path === "chatwork.request_url" ||
-    path === "chatwork.related_request_url"
+    path.endsWith("_url")
   );
 }
 
@@ -94,211 +77,12 @@ function effectiveDescription(task) {
   return task.core.description;
 }
 
-function extractInfoBlock(text) {
-  if (!text) {
-    return null;
-  }
-
-  const match = text.match(/\[info\]([\s\S]*?)\[\/info\]/i);
-  if (!match) {
-    return text.trim() || null;
-  }
-
-  return match[1]
-    .replace(/\[info\]|\[\/info\]/gi, "")
-    .trim();
-}
-
-function parseChatworkRenderBlocks(text) {
-  return parseRenderBlocks(text ?? "", null).blocks;
-}
-
-function pushTextRenderBlock(blocks, text) {
-  const normalized = text.trim();
-  if (!normalized) {
-    return;
-  }
-
-  blocks.push({
-    kind: "text",
-    text: normalized,
-  });
-}
-
-function parseInfoRenderBlock(text) {
-  return parseInfoBlock(text).block;
-}
-
-function parseRenderBlocks(text, terminator) {
-  const blocks = [];
-  let index = 0;
-
-  while (index < text.length) {
-    const rest = text.slice(index);
-
-    if (terminator && rest.startsWith(terminator)) {
-      return { blocks, index };
-    }
-
-    if (rest.startsWith("[info]")) {
-      const parsed = parseInfoBlock(rest);
-      blocks.push(parsed.block);
-      index += parsed.consumed;
-      continue;
-    }
-
-    if (rest.startsWith("[code]")) {
-      const parsed = parseCodeBlock(rest);
-      blocks.push(parsed.block);
-      index += parsed.consumed;
-      continue;
-    }
-
-    if (rest.startsWith("[qt]")) {
-      const parsed = parseQuoteBlock(rest);
-      blocks.push(parsed.block);
-      index += parsed.consumed;
-      continue;
-    }
-
-    if (rest.startsWith("[hr]")) {
-      blocks.push({
-        kind: "rule",
-        title: null,
-        text: "",
-        children: [],
-      });
-      index += "[hr]".length;
-      continue;
-    }
-
-    const nextIndex = findNextMarkup(rest, terminator);
-    pushTextRenderBlock(blocks, rest.slice(0, nextIndex));
-    index += nextIndex;
-  }
-
-  return { blocks, index };
-}
-
-function parseInfoBlock(text) {
-  let index = "[info]".length;
-  while (index < text.length && /\s/.test(text[index])) {
-    index += 1;
-  }
-
-  let title = null;
-  if (text.slice(index).startsWith("[title]")) {
-    const closeIndex = text.indexOf("[/title]", index + "[title]".length);
-    if (closeIndex >= 0) {
-      const titleStart = index + "[title]".length;
-      title = text.slice(titleStart, closeIndex).trim();
-      index = closeIndex + "[/title]".length;
-    }
-  }
-
-  const parsed = parseRenderBlocks(text.slice(index), "[/info]");
-  const children = [...parsed.blocks];
-  let bodyText = "";
-  if (children[0]?.kind === "text") {
-    bodyText = children.shift().text ?? "";
-  }
-
-  const closeOffset = index + parsed.index;
-  const consumed = text.slice(closeOffset).startsWith("[/info]")
-    ? closeOffset + "[/info]".length
-    : text.length;
-
-  return {
-    block: {
-      kind: "info",
-      title,
-      text: bodyText,
-      children,
-    },
-    consumed,
-  };
-}
-
-function parseCodeBlock(text) {
-  const closeIndex = text.indexOf("[/code]", "[code]".length);
-  if (closeIndex >= 0) {
-    return {
-      block: {
-        kind: "code",
-        title: null,
-        text: text.slice("[code]".length, closeIndex).trim(),
-        children: [],
-      },
-      consumed: closeIndex + "[/code]".length,
-    };
-  }
-
-  return {
-    block: {
-      kind: "code",
-      title: null,
-      text: text.trim(),
-      children: [],
-    },
-    consumed: text.length,
-  };
-}
-
-function parseQuoteBlock(text) {
-  const innerStart = "[qt]".length;
-  const parsed = parseRenderBlocks(text.slice(innerStart), "[/qt]");
-  const children = [...parsed.blocks];
-  let bodyText = "";
-  if (children[0]?.kind === "text") {
-    bodyText = children.shift().text ?? "";
-  }
-
-  const closeOffset = innerStart + parsed.index;
-  const consumed = text.slice(closeOffset).startsWith("[/qt]")
-    ? closeOffset + "[/qt]".length
-    : text.length;
-
-  return {
-    block: {
-      kind: "quote",
-      title: null,
-      text: bodyText,
-      children,
-    },
-    consumed,
-  };
-}
-
-function findNextMarkup(text, terminator) {
-  const indexes = [];
-  const infoIndex = text.indexOf("[info]");
-  if (infoIndex >= 0) {
-    indexes.push(infoIndex);
-  }
-  const codeIndex = text.indexOf("[code]");
-  if (codeIndex >= 0) {
-    indexes.push(codeIndex);
-  }
-  const quoteIndex = text.indexOf("[qt]");
-  if (quoteIndex >= 0) {
-    indexes.push(quoteIndex);
-  }
-  const ruleIndex = text.indexOf("[hr]");
-  if (ruleIndex >= 0) {
-    indexes.push(ruleIndex);
-  }
-  if (terminator) {
-    const terminatorIndex = text.indexOf(terminator);
-    if (terminatorIndex >= 0) {
-      indexes.push(terminatorIndex);
-    }
-  }
-
-  return indexes.length === 0 ? text.length : Math.min(...indexes);
-}
-
 function pluginManifest(pluginKey) {
   return pluginFields[pluginKey] ?? null;
+}
+
+function pluginEnabled(pluginKey) {
+  return pluginManifest(pluginKey) != null;
 }
 
 function pluginGroupMeta(pluginKey) {
@@ -317,8 +101,24 @@ function pluginFieldMeta(path) {
   return manifest.fields?.[rest.join(".")] ?? null;
 }
 
+function pluginFieldEntries(pluginKey) {
+  return Object.entries(pluginManifest(pluginKey)?.fields ?? {});
+}
+
 function fieldPlacement(pluginKey, fieldKey) {
-  return pluginManifest(pluginKey)?.fields?.[fieldKey]?.placement ?? "right";
+  return pluginManifest(pluginKey)?.fields?.[fieldKey]?.placement ?? "hidden";
+}
+
+function hasFieldDescendants(pluginKey, fieldKey, placements) {
+  return pluginFieldEntries(pluginKey).some(([candidatePath, meta]) => {
+    if (!placements.has(meta?.placement)) {
+      return false;
+    }
+    return (
+      candidatePath.startsWith(`${fieldKey}.`) ||
+      candidatePath.startsWith(`${fieldKey}[].`)
+    );
+  });
 }
 
 function labelFor(path, fallbackKey) {
@@ -329,81 +129,98 @@ function isObject(value) {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeChatworkExtra(extra) {
-  if (!isObject(extra)) {
-    return null;
+function filterPluginFields(pluginKey, pluginValue, placements) {
+  function hasScalarValue(value) {
+    return value !== null && value !== undefined && value !== "";
   }
 
-  if (isObject(extra.chatwork)) {
-    return extra.chatwork;
-  }
+  function filterValue(fieldKey, value) {
+    const placement = fieldPlacement(pluginKey, fieldKey);
 
-  const chatwork = {};
-  let hasLegacyChatworkData = false;
-  for (const key of legacyChatworkKeys) {
-    if (Object.hasOwn(extra, key)) {
-      chatwork[key] = extra[key];
-      hasLegacyChatworkData = true;
+    if (Array.isArray(value)) {
+      const items = value
+        .map((item) => {
+          if (isObject(item)) {
+            const filteredItem = Object.fromEntries(
+              Object.entries(item)
+                .map(([childKey, childValue]) => [
+                  childKey,
+                  filterValue(`${fieldKey}[].${childKey}`, childValue),
+                ])
+                .filter(([, childValue]) => childValue !== undefined)
+            );
+            return Object.keys(filteredItem).length > 0 ? filteredItem : undefined;
+          }
+
+          return placements.has(fieldPlacement(pluginKey, `${fieldKey}[]`)) &&
+            hasScalarValue(item)
+            ? item
+            : undefined;
+        })
+        .filter((item) => item !== undefined);
+
+      if (placements.has(placement) || hasFieldDescendants(pluginKey, fieldKey, placements)) {
+        return items;
+      }
+      return undefined;
     }
+
+    if (isObject(value)) {
+      const filteredObject = Object.fromEntries(
+        Object.entries(value)
+          .map(([childKey, childValue]) => [
+            childKey,
+            filterValue(`${fieldKey}.${childKey}`, childValue),
+          ])
+          .filter(([, childValue]) => childValue !== undefined)
+      );
+
+      if (placements.has(placement) || Object.keys(filteredObject).length > 0) {
+        return filteredObject;
+      }
+      return undefined;
+    }
+
+    return placements.has(placement) && hasScalarValue(value)
+      ? value
+      : undefined;
   }
 
-  if (!hasLegacyChatworkData) {
-    return null;
-  }
-
-  return chatwork;
-}
-
-function filterPluginFields(pluginKey, pluginValue) {
   if (isObject(pluginValue)) {
     return Object.fromEntries(
-      Object.entries(pluginValue).filter(([fieldKey]) => {
-        return fieldPlacement(pluginKey, fieldKey) === "right";
-      })
+      Object.entries(pluginValue)
+        .map(([fieldKey, value]) => [fieldKey, filterValue(fieldKey, value)])
+        .filter(([, value]) => value !== undefined)
     );
   }
 
-  return pluginValue;
+  return undefined;
 }
 
-function leftFieldValue(pluginKey, pluginValue, preferredField) {
-  if (!isObject(pluginValue)) {
-    return null;
-  }
-
-  if (
-    preferredField &&
-    fieldPlacement(pluginKey, preferredField) === "left" &&
-    Object.hasOwn(pluginValue, preferredField)
-  ) {
-    return pluginValue[preferredField];
-  }
-
-  for (const [fieldKey, value] of Object.entries(pluginValue)) {
-    if (fieldPlacement(pluginKey, fieldKey) === "left") {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-function normalizePluginExtra(extra) {
+function normalizePluginExtra(extra, placements = new Set(["right"])) {
   if (!isObject(extra)) {
     return {};
   }
 
-  const namespaces = {};
-  const chatwork = normalizeChatworkExtra(extra);
-  if (chatwork && Object.keys(chatwork).length > 0) {
-    namespaces.chatwork = filterPluginFields("chatwork", chatwork);
+  function hasVisibleContent(value) {
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+    if (isObject(value)) {
+      return Object.keys(value).length > 0;
+    }
+    return value !== undefined;
   }
 
+  const namespaces = {};
   for (const [key, value] of Object.entries(extra)) {
-    if (key === "chatwork" || legacyChatworkKeys.includes(key)) {
+    if (!pluginEnabled(key)) {
       continue;
     }
-    namespaces[key] = filterPluginFields(key, value);
+    const filteredValue = filterPluginFields(key, value, placements);
+    if (hasVisibleContent(filteredValue)) {
+      namespaces[key] = filteredValue;
+    }
   }
 
   return namespaces;
@@ -487,8 +304,8 @@ function renderJsonTree(path, key, value) {
       return wrapper;
     }
 
-    const details = document.createElement("details");
-    details.open = key === "chatwork";
+      const details = document.createElement("details");
+      details.open = false;
     const summary = document.createElement("summary");
     summary.innerHTML = `
       <span class="tree-key">${labelFor(path, key)}</span>
@@ -706,15 +523,22 @@ function renderGroupedPluginExtraSection(groupId, groupLabel, entries) {
   return section;
 }
 
-function renderPluginExtraSections(container, extra) {
-  const namespaces = Object.entries(normalizePluginExtra(extra));
+function renderPluginExtraSections(
+  container,
+  extra,
+  placements = new Set(["right"]),
+  { showEmpty = true } = {}
+) {
+  const namespaces = Object.entries(normalizePluginExtra(extra, placements));
 
   if (namespaces.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty";
-    empty.textContent = message("no_extra_data", "No extra data.");
-    container.appendChild(empty);
-    return;
+    if (showEmpty) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = message("no_extra_data", "No extra data.");
+      container.appendChild(empty);
+    }
+    return 0;
   }
 
   const grouped = new Map();
@@ -744,99 +568,8 @@ function renderPluginExtraSections(container, extra) {
       )
     );
   }
-}
 
-function normalizeOriginalRequestBlocks(chatwork) {
-  const renderBlocks = leftFieldValue("chatwork", chatwork, "render_blocks");
-  if (Array.isArray(renderBlocks) && renderBlocks.length > 0) {
-    return renderBlocks;
-  }
-
-  const source = chatwork.source ?? {};
-  return parseChatworkRenderBlocks(source.body_raw);
-}
-
-function renderOriginalRequest(container, chatwork) {
-  const blocks = normalizeOriginalRequestBlocks(chatwork);
-  container.innerHTML = "";
-
-  if (blocks.length === 0) {
-    container.textContent = message(
-      "no_original_request",
-      "Original request text is not available."
-    );
-    container.className = "section-body empty";
-    return;
-  }
-
-  container.className = "section-stack";
-
-  for (const block of blocks) {
-    container.appendChild(renderRequestBlock(block));
-  }
-}
-
-function renderRequestBlock(block) {
-  if (block.kind === "rule") {
-    const rule = document.createElement("hr");
-    rule.className = "request-block request-block--rule";
-    return rule;
-  }
-
-  if (block.kind === "quote") {
-    const quote = document.createElement("blockquote");
-    quote.className = "request-block request-block--quote";
-    if (block.text) {
-      appendLinkifiedText(quote, block.text ?? "");
-    }
-    if (Array.isArray(block.children) && block.children.length > 0) {
-      const children = document.createElement("div");
-      children.className = "request-block__children";
-      for (const child of block.children) {
-        children.appendChild(renderRequestBlock(child));
-      }
-      quote.appendChild(children);
-    }
-    return quote;
-  }
-
-  if (block.kind === "code") {
-    const pre = document.createElement("pre");
-    pre.className = "request-block request-block--code";
-    pre.textContent = block.text ?? "";
-    return pre;
-  }
-
-  if (block.kind === "info") {
-    const wrapper = document.createElement("section");
-    wrapper.className = "request-block request-block--info";
-    if (block.title) {
-      const title = document.createElement("div");
-      title.className = "request-block__title";
-      title.textContent = block.title;
-      wrapper.appendChild(title);
-    }
-    if (block.text) {
-      const body = document.createElement("div");
-      body.className = "request-block__body";
-      appendLinkifiedText(body, block.text);
-      wrapper.appendChild(body);
-    }
-    if (Array.isArray(block.children) && block.children.length > 0) {
-      const children = document.createElement("div");
-      children.className = "request-block__children";
-      for (const child of block.children) {
-        children.appendChild(renderRequestBlock(child));
-      }
-      wrapper.appendChild(children);
-    }
-    return wrapper;
-  }
-
-  const paragraph = document.createElement("div");
-  paragraph.className = "request-block request-block--text section-body";
-  appendLinkifiedText(paragraph, block.text ?? "");
-  return paragraph;
+  return namespaces.length;
 }
 
 async function loadTask() {
@@ -847,7 +580,8 @@ async function loadTask() {
 
   if (!taskResponse.ok) {
     document.getElementById("task-title").textContent = message("task_not_found", "Task not found");
-    document.getElementById("task-abstract").textContent = message(
+    document.getElementById("task-description-section").hidden = false;
+    document.getElementById("task-description").textContent = message(
       "task_could_not_be_loaded",
       "The requested task could not be loaded."
     );
@@ -857,21 +591,21 @@ async function loadTask() {
   pluginFields = pluginResponse.ok ? await pluginResponse.json() : {};
 
   const task = await taskResponse.json();
-  const chatwork = normalizeChatworkExtra(task.extra) ?? {};
-  const source = chatwork.source ?? {};
   const metaLine = document.getElementById("meta-line");
   const schedule = document.getElementById("schedule");
+  const scheduleSection = document.getElementById("task-schedule-section");
+  const projectTagsSection = document.getElementById("task-project-tags-section");
+  const projectRow = document.getElementById("task-project-row");
+  const tagsRow = document.getElementById("task-tags-row");
   const tagList = document.getElementById("tag-list");
+  const pluginLeftSection = document.getElementById("task-plugin-left-section");
+  const pluginLeftSections = document.getElementById("plugin-left-sections");
   const pluginExtraSections = document.getElementById("plugin-extra-sections");
   const descriptionSection = document.getElementById("task-description-section");
   const description = effectiveDescription(task);
 
   document.title = `${task.core.title} | taskforce`;
   document.getElementById("task-title").textContent = task.core.title;
-  document.getElementById("task-abstract").textContent = textOrFallback(
-    chatwork.abstract || chatwork.summary,
-    message("no_abstract_yet", "No abstract yet.")
-  );
   if (description) {
     descriptionSection.hidden = false;
     document.getElementById("task-description").textContent = description;
@@ -879,11 +613,16 @@ async function loadTask() {
     descriptionSection.hidden = true;
     document.getElementById("task-description").textContent = "";
   }
-  renderOriginalRequest(document.getElementById("task-original-request"), chatwork);
-  document.getElementById("project-value").textContent = textOrFallback(
-    task.core.project,
-    message("no_project", "no project")
-  );
+  pluginLeftSections.innerHTML = "";
+  pluginLeftSection.hidden =
+    renderPluginExtraSections(
+      pluginLeftSections,
+      task.extra,
+      new Set(["left"]),
+      { showEmpty: false }
+    ) === 0;
+  projectRow.hidden = !task.core.project;
+  document.getElementById("project-value").textContent = task.core.project ?? "";
   pluginExtraSections.innerHTML = "";
   renderPluginExtraSections(pluginExtraSections, task.extra);
 
@@ -901,11 +640,15 @@ async function loadTask() {
   }
 
   schedule.innerHTML = "";
+  let scheduleCount = 0;
   for (const [name, value] of [
     ["target", dateLine(task.core.target_date, task.core.target_time_hint)],
     ["deadline", dateLine(task.core.deadline, task.core.deadline_time_hint)],
     ["launch", dateLine(task.core.launch_date, task.core.launch_time_hint)]
   ]) {
+    if (value === label("dash", "—")) {
+      continue;
+    }
     const row = document.createElement("div");
     row.className = "schedule-row";
     row.innerHTML = `
@@ -913,19 +656,18 @@ async function loadTask() {
       <div class="schedule-value">${value}</div>
     `;
     schedule.appendChild(row);
+    scheduleCount += 1;
   }
+  scheduleSection.hidden = scheduleCount === 0;
 
   tagList.innerHTML = "";
-  if ((task.core.tags ?? []).length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty";
-    empty.textContent = message("no_tags", "No tags.");
-    tagList.appendChild(empty);
-  } else {
+  tagsRow.hidden = (task.core.tags ?? []).length === 0;
+  if ((task.core.tags ?? []).length > 0) {
     for (const tag of task.core.tags) {
       tagList.appendChild(createTagLink(tag));
     }
   }
+  projectTagsSection.hidden = projectRow.hidden && tagsRow.hidden;
 }
 
 loadTask().catch(console.error);
