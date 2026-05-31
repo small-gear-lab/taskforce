@@ -351,6 +351,7 @@ fn render_search_html() -> String {
     render_template(
         SEARCH_INDEX_HTML_TEMPLATE,
         &[
+            ("__NAV_DRAWER__", render_nav_drawer_html()),
             ("__BACKLINK_HREF__", "/".to_string()),
             ("__BACKLINK_LABEL__", tr("Back to Open Tasks")),
             ("__PAGE_TITLE__", escape_html(&tr("Search"))),
@@ -385,6 +386,7 @@ fn render_detail_html() -> String {
     render_template(
         DETAIL_HTML_TEMPLATE,
         &[
+            ("__NAV_DRAWER__", render_nav_drawer_html()),
             ("__BACK_TO_OPEN_TASKS__", tr("Back to Open Tasks")),
             ("__LOADING_TASK__", tr("Loading task…")),
             ("__DESCRIPTION__", tr("Description")),
@@ -430,6 +432,7 @@ fn render_index_page(
     render_template(
         INDEX_HTML_TEMPLATE,
         &[
+            ("__NAV_DRAWER__", render_nav_drawer_html()),
             ("__BACKLINK_HREF__", backlink_href.to_string()),
             ("__BACKLINK_LABEL__", backlink_label),
             ("__PAGE_TITLE__", escape_html(&title)),
@@ -443,6 +446,66 @@ fn render_index_page(
             ("__INDEX_CSS_URL__", asset_url("/assets/index.css")),
             ("__INDEX_JS_URL__", asset_url("/assets/index.js")),
         ],
+    )
+}
+
+fn render_nav_drawer_html() -> String {
+    let status_links = [
+        ("active", tr("active")),
+        ("unstarted", tr("unstarted")),
+        ("waiting", tr("waiting")),
+        ("suspended", tr("suspended")),
+        ("done", tr("done")),
+        ("abandoned", tr("abandoned")),
+        ("mistaken", tr("mistaken")),
+        ("duplicated", tr("duplicated")),
+    ]
+    .into_iter()
+    .map(|(status, label)| {
+        format!(
+            r#"<a class="nav-link nav-link--nested" href="/status/{status}">{}</a>"#,
+            escape_html(&label)
+        )
+    })
+    .collect::<String>();
+
+    format!(
+        r#"
+<div class="nav-drawer-root">
+  <button id="nav-toggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-drawer" aria-label="{menu}">
+    <span class="nav-toggle-bar"></span>
+    <span class="nav-toggle-bar"></span>
+    <span class="nav-toggle-bar"></span>
+  </button>
+  <div id="nav-backdrop" class="nav-backdrop" hidden></div>
+  <aside id="nav-drawer" class="nav-drawer" hidden>
+    <div class="nav-drawer-head">
+      <div class="nav-drawer-title">taskforce</div>
+      <button id="nav-close" class="nav-close" type="button" aria-label="{close}">×</button>
+    </div>
+    <nav class="nav-sections" aria-label="{menu}">
+      <div class="nav-section">
+        <div class="nav-section-label">{browse}</div>
+        <a class="nav-link" href="/">{open_tasks}</a>
+        <a class="nav-link" href="/tasks/all">{all_tasks}</a>
+        <a class="nav-link" href="/search">{search}</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">{statuses}</div>
+        {status_links}
+      </div>
+    </nav>
+  </aside>
+</div>
+"#,
+        menu = escape_html(&tr("Menu")),
+        close = escape_html(&tr("Close")),
+        browse = escape_html(&tr("Browse")),
+        open_tasks = escape_html(&tr("Open Tasks")),
+        all_tasks = escape_html(&tr("All Tasks")),
+        search = escape_html(&tr("Search")),
+        statuses = escape_html(&tr("Statuses")),
+        status_links = status_links,
     )
 }
 
@@ -635,6 +698,7 @@ const INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     <link rel="stylesheet" href="__INDEX_CSS_URL__" />
   </head>
   <body>
+    __NAV_DRAWER__
     <main>
       <div class="topline">
         <a class="backlink" href="__BACKLINK_HREF__">__BACKLINK_LABEL__</a>
@@ -674,6 +738,7 @@ const SEARCH_INDEX_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     <link rel="stylesheet" href="__INDEX_CSS_URL__" />
   </head>
   <body>
+    __NAV_DRAWER__
     <main>
       <div class="topline">
         <a class="backlink" href="__BACKLINK_HREF__">__BACKLINK_LABEL__</a>
@@ -722,6 +787,7 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     <link rel="stylesheet" href="__TASK_DETAIL_CSS_URL__" />
   </head>
   <body>
+    __NAV_DRAWER__
     <main>
       <div class="topline">
         <a class="backlink" href="/">__BACK_TO_OPEN_TASKS__</a>

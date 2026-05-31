@@ -26,6 +26,122 @@ body {
     linear-gradient(180deg, #ede2cf 0%, var(--bg) 46%, #efe8dc 100%);
 }
 
+.nav-drawer-root {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 40;
+}
+
+.nav-toggle,
+.nav-close {
+  border: 1px solid var(--line);
+  background: rgba(255, 251, 244, 0.94);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.nav-toggle {
+  display: inline-grid;
+  gap: 4px;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  place-content: center;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(23, 21, 18, 0.1);
+}
+
+.nav-toggle-bar {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.nav-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 21, 18, 0.22);
+  backdrop-filter: blur(2px);
+}
+
+.nav-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: min(320px, calc(100vw - 24px));
+  height: 100vh;
+  padding: 22px 20px 28px;
+  border-right: 1px solid var(--line);
+  background: rgba(255, 251, 244, 0.97);
+  box-shadow: 24px 0 60px rgba(23, 21, 18, 0.16);
+  overflow-y: auto;
+}
+
+.nav-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.nav-drawer-title {
+  font-family: "Inter", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.nav-close {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.nav-sections {
+  display: grid;
+  gap: 18px;
+}
+
+.nav-section {
+  display: grid;
+  gap: 8px;
+}
+
+.nav-section-label {
+  font-family: "Inter", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+
+.nav-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--ink);
+  text-decoration: none;
+  font-family: "Inter", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif;
+  font-size: 14px;
+  background: rgba(23, 21, 18, 0.04);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.nav-link:hover {
+  color: var(--accent);
+  background: rgba(196, 83, 47, 0.08);
+}
+
+.nav-link--nested {
+  margin-left: 10px;
+}
+
 main {
   width: min(1100px, calc(100% - 32px));
   margin: 0 auto;
@@ -484,6 +600,11 @@ pre {
 }
 
 @media (max-width: 860px) {
+  .nav-drawer-root {
+    top: 14px;
+    left: 14px;
+  }
+
   .grid {
     grid-template-columns: 1fr;
   }

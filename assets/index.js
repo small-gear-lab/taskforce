@@ -29,6 +29,34 @@ const statusOrder =
 const apiUrl = config.api_url ?? "/api/tasks";
 const searchApiBase = config.search_api_base ?? null;
 
+function initializeNavDrawer() {
+  const toggle = document.getElementById("nav-toggle");
+  const close = document.getElementById("nav-close");
+  const drawer = document.getElementById("nav-drawer");
+  const backdrop = document.getElementById("nav-backdrop");
+  if (!toggle || !drawer || !backdrop) {
+    return;
+  }
+
+  function setOpen(nextOpen) {
+    toggle.setAttribute("aria-expanded", String(nextOpen));
+    drawer.hidden = !nextOpen;
+    backdrop.hidden = !nextOpen;
+    document.body.style.overflow = nextOpen ? "hidden" : "";
+  }
+
+  toggle.addEventListener("click", () => {
+    setOpen(toggle.getAttribute("aria-expanded") !== "true");
+  });
+  close?.addEventListener("click", () => setOpen(false));
+  backdrop.addEventListener("click", () => setOpen(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setOpen(false);
+    }
+  });
+}
+
 function label(name, fallback) {
   return labels[name] ?? fallback;
 }
@@ -280,4 +308,5 @@ quickFilterInput?.addEventListener("keydown", (event) => {
 });
 
 initializeSearchForm();
+initializeNavDrawer();
 loadTasks().catch(console.error);

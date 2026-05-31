@@ -265,3 +265,15 @@ msgstr "誤起票"
 
 msgid "duplicated"
 msgstr "重複"
+
+msgid "Menu"
+msgstr "メニュー"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Browse"
+msgstr "閲覧"
+
+msgid "Statuses"
+msgstr "ステータス一覧"
