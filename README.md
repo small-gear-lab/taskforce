@@ -114,6 +114,7 @@ cargo build --release
 
 - If you want a stable local URL, set `[server].port` in your config before enabling the service.
 - A sample user unit is available at `config/systemd/taskforce.service`.
+- Debug-build samples are available at `config/systemd/taskforce-debug.service` and `config/systemd/taskforce-development-debug.service`.
 - The sample unit reads `~/.config/taskforce/taskforce.env` via `EnvironmentFile=`. Set `TASKFORCE_ENV=production` there if you want the service to load the `production` profile from `config.toml`.
 - Install it under `~/.config/systemd/user/taskforce.service`, then run:
 

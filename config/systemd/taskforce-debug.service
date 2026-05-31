@@ -1,0 +1,13 @@
+[Unit]
+Description=taskforce local web UI (debug)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/taskforce/taskforce.env
+ExecStart=%h/work/myrepo/taskforce/target/debug/taskforce serve
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
