@@ -194,7 +194,23 @@ fn index_config_json() -> String {
         "labels": {
             "urgency": tr("urgency"),
             "no_open_tasks": tr("No open tasks."),
+            "status": tr("Status"),
+            "deadline": tr("Deadline"),
+            "target": tr("Target"),
+            "launch": tr("Launch"),
+            "no_deadline": tr("No deadline"),
         }
+        ,
+        "status_labels": {
+            "unstarted": tr("unstarted"),
+            "active": tr("active"),
+            "waiting": tr("waiting"),
+            "suspended": tr("suspended"),
+            "done": tr("done"),
+            "abandoned": tr("abandoned"),
+            "mistaken": tr("mistaken"),
+            "duplicated": tr("duplicated"),
+        },
     })
     .to_string()
 }
@@ -508,6 +524,31 @@ mod tests {
         assert!(text.contains("/assets/index.css"));
         assert!(text.contains("/assets/index.js"));
         assert!(text.contains("taskforce-index-config"));
+    }
+
+    #[tokio::test]
+    async fn index_page_assets_include_status_and_schedule_metadata() {
+        let app = crate::web::app_router(MockBackend { tasks: Vec::new() });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/index.js")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+        assert!(text.contains("statusLabel(task.core.status)"));
+        assert!(text.contains("label(\"deadline\", \"Deadline\")"));
+        assert!(text.contains("task-status--${task.core.status}"));
+        assert!(text.contains("task-meta-item--deadline"));
     }
 
     #[tokio::test]
