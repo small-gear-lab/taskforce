@@ -15,13 +15,20 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    List,
+    List {
+        #[arg(long)]
+        json: bool,
+    },
     Search {
         #[arg(long = "where")]
         where_clauses: Vec<String>,
+        #[arg(long)]
+        json: bool,
     },
     Show {
         id: u64,
+        #[arg(long)]
+        json: bool,
     },
     Add {
         title: String,
@@ -206,10 +213,14 @@ mod tests {
         ]);
 
         match cli.command {
-            Commands::Search { where_clauses } => {
+            Commands::Search {
+                where_clauses,
+                json,
+            } => {
                 assert_eq!(where_clauses.len(), 2);
                 assert_eq!(where_clauses[0], "status = 'active'");
                 assert_eq!(where_clauses[1], "chatwork.requester = '石井'");
+                assert!(!json);
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -217,9 +228,12 @@ mod tests {
 
     #[test]
     fn parses_show_and_note_commands() {
-        let cli = Cli::parse_from(["taskforce", "show", "12"]);
+        let cli = Cli::parse_from(["taskforce", "show", "12", "--json"]);
         match cli.command {
-            Commands::Show { id } => assert_eq!(id, 12),
+            Commands::Show { id, json } => {
+                assert_eq!(id, 12);
+                assert!(json);
+            }
             other => panic!("unexpected command: {other:?}"),
         }
 
@@ -309,6 +323,33 @@ mod tests {
                     url,
                     "https://www.chatwork.com/#!rid36219958-2111786210627420160"
                 );
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_list_and_search_json_flags() {
+        let cli = Cli::parse_from(["taskforce", "list", "--json"]);
+        match cli.command {
+            Commands::List { json } => assert!(json),
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let cli = Cli::parse_from([
+            "taskforce",
+            "search",
+            "--where",
+            "status = 'active'",
+            "--json",
+        ]);
+        match cli.command {
+            Commands::Search {
+                where_clauses,
+                json,
+            } => {
+                assert_eq!(where_clauses, vec!["status = 'active'"]);
+                assert!(json);
             }
             other => panic!("unexpected command: {other:?}"),
         }

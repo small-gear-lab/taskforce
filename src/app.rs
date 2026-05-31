@@ -7,6 +7,7 @@ use crate::chatwork_plugin::import_chatwork_url;
 use crate::cli::{Cli, Commands};
 use crate::config::AppConfig;
 use crate::db_backend::ConfiguredBackend;
+use crate::dto::TaskDto;
 use crate::search::TaskSearch;
 
 pub async fn run(cli: Cli) -> Result<()> {
@@ -14,17 +15,20 @@ pub async fn run(cli: Cli) -> Result<()> {
     let client = ConfiguredBackend::open(&config).await?;
 
     match cli.command {
-        Commands::List => {
+        Commands::List { json } => {
             let tasks = client.list_pending().await?;
-            print_tasks(&tasks);
+            print_tasks(&tasks, json)?;
         }
-        Commands::Search { where_clauses } => {
+        Commands::Search {
+            where_clauses,
+            json,
+        } => {
             let tasks = client.search(&TaskSearch::new(where_clauses)).await?;
-            print_tasks(&tasks);
+            print_tasks(&tasks, json)?;
         }
-        Commands::Show { id } => {
+        Commands::Show { id, json } => {
             let task = client.get_task(id).await?;
-            print_task_detail(&task)?;
+            print_task_detail(&task, json)?;
         }
         Commands::Add {
             title,
@@ -154,18 +158,31 @@ pub async fn run(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-fn print_tasks(tasks: &[Task]) {
+fn print_tasks(tasks: &[Task], as_json: bool) -> Result<()> {
+    if as_json {
+        let dto = tasks.iter().map(TaskDto::from).collect::<Vec<_>>();
+        println!("{}", serde_json::to_string_pretty(&dto)?);
+        return Ok(());
+    }
+
     if tasks.is_empty() {
         println!("no open tasks");
-        return;
+        return Ok(());
     }
 
     for task in tasks {
         println!("{} {}", task.id_text(), task.title());
     }
+
+    Ok(())
 }
 
-fn print_task_detail(task: &Task) -> Result<()> {
+fn print_task_detail(task: &Task, as_json: bool) -> Result<()> {
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&TaskDto::from(task))?);
+        return Ok(());
+    }
+
     println!("id: {}", task.id_text());
     println!("title: {}", task.title());
     println!("status: {}", task.core.status);

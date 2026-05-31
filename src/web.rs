@@ -8,7 +8,8 @@ use axum::routing::get;
 use axum::{Json, Router, http::StatusCode};
 use serde_json::{Map, Value, json};
 
-use crate::backend::{Task, TaskBackend};
+use crate::backend::TaskBackend;
+use crate::dto::TaskDto;
 use crate::i18n::tr;
 use crate::plugin::plugin_manifests;
 
@@ -44,28 +45,30 @@ async fn index() -> Html<String> {
     Html(render_index_html())
 }
 
-async fn api_tasks<B>(State(backend): State<B>) -> Result<Json<Vec<Task>>, axum::http::StatusCode>
+async fn api_tasks<B>(
+    State(backend): State<B>,
+) -> Result<Json<Vec<TaskDto>>, axum::http::StatusCode>
 where
     B: TaskBackend + Clone + Send + Sync + 'static,
 {
     backend
         .list_pending()
         .await
-        .map(Json)
+        .map(|tasks| Json(tasks.iter().map(TaskDto::from).collect()))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn api_task<B>(
     Path(id): Path<u64>,
     State(backend): State<B>,
-) -> Result<Json<Task>, StatusCode>
+) -> Result<Json<TaskDto>, StatusCode>
 where
     B: TaskBackend + Clone + Send + Sync + 'static,
 {
     backend
         .get_task(id)
         .await
-        .map(Json)
+        .map(|task| Json(TaskDto::from(&task)))
         .map_err(map_task_error_status)
 }
 

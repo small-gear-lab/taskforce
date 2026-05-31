@@ -3,6 +3,7 @@ pub mod backend;
 pub mod cli;
 pub mod config;
 pub mod db_backend;
+pub mod dto;
 pub mod i18n;
 pub mod local_backend;
 pub mod plugin;
