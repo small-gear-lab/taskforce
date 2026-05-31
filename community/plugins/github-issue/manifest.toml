@@ -1,0 +1,12 @@
+id = "github-issue"
+name = "GitHub Issue"
+
+[[custom_fields]]
+path = "issue"
+label = "Issue"
+placement = "right"
+
+[[custom_fields]]
+path = "issue_url"
+label = "Issue URL"
+placement = "right"

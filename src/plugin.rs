@@ -1,8 +1,12 @@
 use anyhow::Result;
+use gettext::Catalog;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::fs;
+use std::fs::File;
 use std::path::{Path, PathBuf};
+
+use crate::i18n::{preferred_locale_candidates, tr};
 
 pub type PluginId = &'static str;
 
@@ -11,7 +15,11 @@ pub struct PluginManifest {
     pub id: String,
     pub name: String,
     #[serde(default)]
+    pub i18n_domain: Option<String>,
+    #[serde(default)]
     pub custom_fields: Vec<PluginCustomField>,
+    #[serde(skip)]
+    pub root_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -188,12 +196,41 @@ fn plugin_manifests_in_dir(root: &Path) -> Result<Vec<PluginManifest>> {
         }
 
         let content = fs::read_to_string(&manifest_path)?;
-        let manifest: PluginManifest = toml::from_str(&content)?;
+        let mut manifest: PluginManifest = toml::from_str(&content)?;
+        manifest.root_dir = entry.path();
         manifests.push(manifest);
     }
 
     manifests.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(manifests)
+}
+
+pub fn tr_plugin(manifest: &PluginManifest, message: &str) -> String {
+    plugin_catalog(manifest)
+        .map(|catalog| catalog.gettext(message).to_string())
+        .unwrap_or_else(|| tr(message))
+}
+
+fn plugin_catalog(manifest: &PluginManifest) -> Option<Catalog> {
+    let locale_root = manifest.root_dir.join("locale");
+    let domain = manifest.i18n_domain.as_deref().unwrap_or(&manifest.id);
+
+    for locale in preferred_locale_candidates() {
+        let path = locale_root
+            .join(&locale)
+            .join("LC_MESSAGES")
+            .join(format!("{domain}.mo"));
+        if path.is_file() {
+            return parse_catalog(&path).ok();
+        }
+    }
+
+    None
+}
+
+fn parse_catalog(path: &Path) -> Result<Catalog> {
+    let file = File::open(path)?;
+    Ok(Catalog::parse(file)?)
 }
 
 fn plugin_root_dir() -> PathBuf {

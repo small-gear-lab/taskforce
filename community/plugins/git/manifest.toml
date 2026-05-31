@@ -1,0 +1,57 @@
+id = "git"
+name = "Git"
+
+[[custom_fields]]
+path = "repository"
+label = "Repository"
+placement = "right"
+
+[[custom_fields]]
+path = "remote"
+label = "Remote"
+placement = "hidden"
+
+[[custom_fields]]
+path = "default_branch"
+label = "Default Branch"
+placement = "right"
+
+[[custom_fields]]
+path = "working_branch"
+label = "Working Branch"
+placement = "right"
+
+[[custom_fields]]
+path = "compare_base"
+label = "Compare Base"
+placement = "right"
+
+[[custom_fields]]
+path = "commit"
+label = "Commit"
+placement = "right"
+
+[[custom_fields]]
+path = "commit_range"
+label = "Commit Range"
+placement = "right"
+
+[[custom_fields]]
+path = "repo_root"
+label = "Repository Root"
+placement = "hidden"
+
+[[custom_fields]]
+path = "production_branch"
+label = "Production Branch"
+placement = "right"
+
+[[custom_fields]]
+path = "production_commit"
+label = "Production Commit"
+placement = "right"
+
+[[custom_fields]]
+path = "production_commit_url"
+label = "Production Commit URL"
+placement = "right"

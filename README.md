@@ -54,6 +54,7 @@ taskforce/
 - If `TASKFORCE_ENV=<profile>` or `--env=<profile>` is set, taskforce also loads the matching profile entry from `[profiles]` / `[[profiles.items]]` in `config.toml`.
 - Enabled plugin manifests are loaded only from `plugins/<plugin-id>/manifest.toml`.
 - Catalog entries under `examples/plugins/` or `community/plugins/` are not loaded until you copy or symlink them into `plugins/`.
+- Catalog plugin manifests currently include `community/plugins/git/`, `community/plugins/github-repo/`, `community/plugins/github-issue/`, and `community/plugins/github-pr/`.
 - The database backend is selected with `[backend].kind`; `sqlite` and `postgres` are supported.
 - If `[backend].sqlite_path` and the legacy top-level `sqlite_path` are unset, taskforce uses `$XDG_DATA_HOME/taskforce/taskforce.db`, or `~/.local/share/taskforce/taskforce.db` if `XDG_DATA_HOME` is unset.
 - For Postgres, set `[backend].postgres_url`, `TASKFORCE_POSTGRES_URL`, or the split env vars `TASKFORCE_POSTGRES_HOST` and `TASKFORCE_POSTGRES_PASS`. `TASKFORCE_POSTGRES_USER`, `TASKFORCE_POSTGRES_PORT`, `TASKFORCE_POSTGRES_DB`, and `TASKFORCE_POSTGRES_SSLMODE` are optional and default to `postgres`, `5432`, `postgres`, and `require`.

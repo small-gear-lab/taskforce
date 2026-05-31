@@ -1,0 +1,12 @@
+id = "github-repo"
+name = "GitHub Repo"
+
+[[custom_fields]]
+path = "repository"
+label = "Repository"
+placement = "right"
+
+[[custom_fields]]
+path = "repository_url"
+label = "Repository URL"
+placement = "right"

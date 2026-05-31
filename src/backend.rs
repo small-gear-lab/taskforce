@@ -225,6 +225,78 @@ impl Task {
     }
 }
 
+pub fn set_extra_path(extra: &mut Map<String, Value>, key: &str, value: Value) {
+    extra.remove(key);
+
+    let mut parts = key.split('.').peekable();
+    let mut current = extra;
+
+    while let Some(part) = parts.next() {
+        if parts.peek().is_none() {
+            current.insert(part.to_string(), value);
+            return;
+        }
+
+        let entry = current
+            .entry(part.to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if !entry.is_object() {
+            *entry = Value::Object(Map::new());
+        }
+        current = entry
+            .as_object_mut()
+            .expect("extra path intermediate values should be objects");
+    }
+}
+
+pub fn get_extra_path<'a>(extra: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
+    if let Some(value) = extra.get(key) {
+        return Some(value);
+    }
+
+    let mut parts = key.split('.');
+    let first = parts.next()?;
+    let mut current = extra.get(first)?;
+
+    for part in parts {
+        current = current.as_object()?.get(part)?;
+    }
+
+    Some(current)
+}
+
+pub fn unset_extra_path(extra: &mut Map<String, Value>, key: &str) -> bool {
+    if extra.remove(key).is_some() {
+        return true;
+    }
+
+    fn remove_recursive(current: &mut Map<String, Value>, parts: &[&str]) -> bool {
+        if parts.is_empty() {
+            return false;
+        }
+
+        if parts.len() == 1 {
+            return current.remove(parts[0]).is_some();
+        }
+
+        let Some(child) = current.get_mut(parts[0]) else {
+            return false;
+        };
+        let Some(child_map) = child.as_object_mut() else {
+            return false;
+        };
+
+        let removed = remove_recursive(child_map, &parts[1..]);
+        if removed && child_map.is_empty() {
+            current.remove(parts[0]);
+        }
+        removed
+    }
+
+    let parts = key.split('.').collect::<Vec<_>>();
+    remove_recursive(extra, &parts)
+}
+
 #[async_trait]
 pub trait TaskBackend {
     async fn list_pending(&self) -> Result<Vec<Task>>;

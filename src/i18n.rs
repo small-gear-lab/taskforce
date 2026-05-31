@@ -55,7 +55,7 @@ fn locale_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-fn preferred_locale_candidates() -> Vec<String> {
+pub(crate) fn preferred_locale_candidates() -> Vec<String> {
     let mut candidates = Vec::new();
 
     for key in ["TASKFORCE_LOCALE", "LC_MESSAGES", "LANG"] {

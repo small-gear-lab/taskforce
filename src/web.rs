@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use crate::backend::TaskBackend;
 use crate::dto::{TaskDto, TaskListItemDto};
 use crate::i18n::tr;
-use crate::plugin::plugin_manifests;
+use crate::plugin::{plugin_manifests, tr_plugin};
 
 pub async fn serve<B>(backend: B, addr: SocketAddr) -> Result<()>
 where
@@ -242,7 +242,7 @@ fn plugin_fields_value() -> Result<Value> {
             fields.insert(
                 field.path.clone(),
                 json!({
-                    "label": tr(&field.label),
+                    "label": tr_plugin(&manifest, &field.label),
                     "placement": field.placement,
                 }),
             );
@@ -251,7 +251,7 @@ fn plugin_fields_value() -> Result<Value> {
         plugins.insert(
             manifest.id.clone(),
             json!({
-                "name": tr(&manifest.name),
+                "name": tr_plugin(&manifest, &manifest.name),
                 "fields": fields,
             }),
         );
@@ -975,7 +975,7 @@ mod tests {
         );
         assert_eq!(
             value["chatwork"]["fields"]["summary"]["label"],
-            Value::String("Request Summary".into())
+            Value::String("改修概要".into())
         );
     }
 

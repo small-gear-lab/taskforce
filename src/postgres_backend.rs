@@ -13,6 +13,7 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::backend::{
     Annotation, AnnotationKind, NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput,
+    get_extra_path, set_extra_path, unset_extra_path,
 };
 use crate::search::{TaskSearch, compile_postgres};
 
@@ -303,7 +304,7 @@ impl TaskBackend for PostgresBackend {
 
     async fn set_extra(&self, id: u64, key: &str, value: Value) -> Result<Task> {
         let mut task = self.fetch_task(id).await?;
-        task.extra.insert(key.to_string(), value);
+        set_extra_path(&mut task.extra, key, value);
         let extra_json = serde_json::to_value(&task.extra)?;
 
         self.client
@@ -318,12 +319,12 @@ impl TaskBackend for PostgresBackend {
 
     async fn get_extra(&self, id: u64, key: &str) -> Result<Option<Value>> {
         let task = self.fetch_task(id).await?;
-        Ok(task.extra.get(key).cloned())
+        Ok(get_extra_path(&task.extra, key).cloned())
     }
 
     async fn unset_extra(&self, id: u64, key: &str) -> Result<Task> {
         let mut task = self.fetch_task(id).await?;
-        task.extra.remove(key);
+        unset_extra_path(&mut task.extra, key);
         let extra_json = serde_json::to_value(&task.extra)?;
 
         self.client

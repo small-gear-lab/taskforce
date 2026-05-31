@@ -1,0 +1,83 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: chatwork\n"
+"PO-Revision-Date: 2026-05-31 00:00+0900\n"
+"Last-Translator: taskforce\n"
+"Language: ja\n"
+"Language-Team: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Chatwork"
+msgstr "Chatwork"
+
+msgid "Requester"
+msgstr "依頼主"
+
+msgid "This Request"
+msgstr "この依頼"
+
+msgid "Related Request"
+msgstr "類似依頼"
+
+msgid "Request Summary"
+msgstr "改修概要"
+
+msgid "Request Purpose"
+msgstr "改修目的"
+
+msgid "Request Details"
+msgstr "改修内容"
+
+msgid "Production Rollout"
+msgstr "本番反映"
+
+msgid "Template Kind"
+msgstr "テンプレート種別"
+
+msgid "Target Sites"
+msgstr "対象サイト"
+
+msgid "Site Label"
+msgstr "サイト名"
+
+msgid "Site Code"
+msgstr "サイトコード"
+
+msgid "Scope Line"
+msgstr "対象行"
+
+msgid "Original Request"
+msgstr "元依頼"
+
+msgid "Message Source"
+msgstr "メッセージソース"
+
+msgid "Kind"
+msgstr "種別"
+
+msgid "Room ID"
+msgstr "ルームID"
+
+msgid "Message ID"
+msgstr "メッセージID"
+
+msgid "Message URL"
+msgstr "メッセージURL"
+
+msgid "Sender"
+msgstr "送信者"
+
+msgid "Sender Account ID"
+msgstr "送信者アカウントID"
+
+msgid "Sender Name"
+msgstr "送信者名"
+
+msgid "Sent At"
+msgstr "送信日時"
+
+msgid "Body"
+msgstr "本文"

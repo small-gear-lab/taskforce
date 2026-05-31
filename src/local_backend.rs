@@ -9,6 +9,7 @@ use serde_json::Map;
 
 use crate::backend::{
     Annotation, AnnotationKind, NewTaskInput, Task, TaskBackend, TaskStatus, UpdateTaskInput,
+    get_extra_path, set_extra_path, unset_extra_path,
 };
 use crate::search::{TaskSearch, compile_sqlite};
 
@@ -355,7 +356,7 @@ impl TaskBackend for LocalBackend {
     async fn set_extra(&self, id: u64, key: &str, value: serde_json::Value) -> Result<Task> {
         let connection = self.connection()?;
         let mut task = self.fetch_task(id)?;
-        task.extra.insert(key.to_string(), value);
+        set_extra_path(&mut task.extra, key, value);
 
         connection.execute(
             "UPDATE tasks SET extra_json = ?1, updated_at = ?2 WHERE id = ?3",
@@ -371,13 +372,13 @@ impl TaskBackend for LocalBackend {
 
     async fn get_extra(&self, id: u64, key: &str) -> Result<Option<serde_json::Value>> {
         let task = self.fetch_task(id)?;
-        Ok(task.extra.get(key).cloned())
+        Ok(get_extra_path(&task.extra, key).cloned())
     }
 
     async fn unset_extra(&self, id: u64, key: &str) -> Result<Task> {
         let connection = self.connection()?;
         let mut task = self.fetch_task(id)?;
-        task.extra.remove(key);
+        unset_extra_path(&mut task.extra, key);
 
         connection.execute(
             "UPDATE tasks SET extra_json = ?1, updated_at = ?2 WHERE id = ?3",
@@ -743,15 +744,26 @@ mod tests {
         assert_eq!(edited.core.project, None);
 
         backend
-            .set_extra(id, "requester", serde_json::Value::String("ishii".into()))
+            .set_extra(
+                id,
+                "git.working_branch",
+                serde_json::Value::String("feature/tag-pages".into()),
+            )
             .await?;
         assert_eq!(
-            backend.get_extra(id, "requester").await?,
-            Some(serde_json::Value::String("ishii".into()))
+            backend.get_extra(id, "git.working_branch").await?,
+            Some(serde_json::Value::String("feature/tag-pages".into()))
         );
 
-        let edited = backend.unset_extra(id, "requester").await?;
-        assert!(!edited.extra.contains_key("requester"));
+        let edited = backend.unset_extra(id, "git.working_branch").await?;
+        assert!(!edited.extra.contains_key("git.working_branch"));
+        assert!(
+            edited
+                .extra
+                .get("git")
+                .and_then(|value| value.as_object())
+                .is_none()
+        );
         Ok(())
     }
 

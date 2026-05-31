@@ -1,0 +1,27 @@
+id = "github-pr"
+name = "GitHub PR"
+
+[[custom_fields]]
+path = "pull_request"
+label = "Pull Request"
+placement = "right"
+
+[[custom_fields]]
+path = "pull_request_url"
+label = "Pull Request URL"
+placement = "right"
+
+[[custom_fields]]
+path = "base_branch"
+label = "Base Branch"
+placement = "right"
+
+[[custom_fields]]
+path = "head_branch"
+label = "Head Branch"
+placement = "right"
+
+[[custom_fields]]
+path = "compare_url"
+label = "Compare URL"
+placement = "right"

@@ -1,0 +1,29 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: github-pr\n"
+"PO-Revision-Date: 2026-05-31 00:00+0900\n"
+"Last-Translator: taskforce\n"
+"Language: ja\n"
+"Language-Team: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "GitHub PR"
+msgstr "GitHub PR"
+
+msgid "Pull Request"
+msgstr "プルリクエスト"
+
+msgid "Pull Request URL"
+msgstr "プルリクエストURL"
+
+msgid "Base Branch"
+msgstr "ベースブランチ"
+
+msgid "Head Branch"
+msgstr "ヘッドブランチ"
+
+msgid "Compare URL"
+msgstr "比較URL"
