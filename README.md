@@ -1,3 +1,9 @@
+<!--
+Copyright (c) 2026- Masaki Ishii
+Copyright (c) 2026- Small Gear Lab
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # taskforce
 
 Personal task management system built around a Rust API, a web UI, and a local structured task store.

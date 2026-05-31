@@ -1,3 +1,7 @@
+// Copyright (c) 2026- Masaki Ishii
+// Copyright (c) 2026- Small Gear Lab
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 const configNode = document.getElementById("taskforce-detail-config");
 const config = configNode ? JSON.parse(configNode.textContent ?? "{}") : {};
 const labels = config.labels ?? {};

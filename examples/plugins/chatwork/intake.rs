@@ -1,3 +1,7 @@
+// Copyright (c) 2026- Masaki Ishii
+// Copyright (c) 2026- Small Gear Lab
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use serde_json::{Value, json};

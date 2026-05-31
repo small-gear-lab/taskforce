@@ -1,3 +1,7 @@
+// Copyright (c) 2026- Masaki Ishii
+// Copyright (c) 2026- Small Gear Lab
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 use std::fmt;
 use std::fs;
 use std::net::{IpAddr, SocketAddr};

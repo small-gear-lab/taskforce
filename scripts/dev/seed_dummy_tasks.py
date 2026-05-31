@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+# Copyright (c) 2026- Masaki Ishii
+# Copyright (c) 2026- Small Gear Lab
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import argparse
 import os
 import pathlib

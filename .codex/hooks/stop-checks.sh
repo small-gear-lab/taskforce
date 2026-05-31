@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# Copyright (c) 2026- Masaki Ishii
+# Copyright (c) 2026- Small Gear Lab
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 set -euo pipefail
 
 cargo fmt
