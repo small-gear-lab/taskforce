@@ -455,6 +455,74 @@ function wireExtraViewToggle(treeButton, rawButton, expandAllButton, collapseAll
   setMode("tree");
 }
 
+function formatAnnotationTimestamp(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return "";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  const yyyy = parsed.getFullYear();
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  const hh = String(parsed.getHours()).padStart(2, "0");
+  const mi = String(parsed.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
+
+function renderAnnotations(task) {
+  const section = document.getElementById("task-annotations-section");
+  const list = document.getElementById("task-annotations");
+  if (!section || !list) {
+    return;
+  }
+  list.innerHTML = "";
+
+  const annotations = Array.isArray(task.annotations) ? task.annotations : [];
+  if (annotations.length === 0) {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
+  for (const annotation of annotations) {
+    const item = document.createElement("article");
+    item.className = "annotation";
+
+    const header = document.createElement("div");
+    header.className = "annotation__header";
+
+    const kind = String(annotation?.kind ?? "note").trim();
+    if (kind) {
+      const kindBadge = document.createElement("span");
+      kindBadge.className = `annotation__kind annotation__kind--${kind}`;
+      kindBadge.textContent = kind;
+      header.appendChild(kindBadge);
+    }
+
+    const stamp = formatAnnotationTimestamp(annotation?.created_at);
+    if (stamp) {
+      const time = document.createElement("time");
+      time.className = "annotation__sent-at";
+      if (typeof annotation?.created_at === "string") {
+        time.setAttribute("datetime", annotation.created_at);
+      }
+      time.textContent = stamp;
+      header.appendChild(time);
+    }
+
+    item.appendChild(header);
+
+    const body = document.createElement("p");
+    body.className = "annotation__body";
+    appendLinkifiedText(body, annotation?.body ?? "");
+    item.appendChild(body);
+
+    list.appendChild(item);
+  }
+}
+
 async function renderFieldValueNode(pluginKey, path, key, value, task) {
   const rendererUrl = pluginFieldRendererUrl(path);
   if (!rendererUrl) {
@@ -768,6 +836,8 @@ async function loadTask() {
   document.getElementById("project-value").textContent = task.core.project ?? "";
   pluginExtraSections.innerHTML = "";
   await renderPluginExtraSections(pluginExtraSections, task.extra, new Set(["right"]), { task });
+
+  renderAnnotations(task);
 
   metaLine.innerHTML = "";
   for (const chipText of [

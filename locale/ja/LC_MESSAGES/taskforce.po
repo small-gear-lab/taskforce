@@ -153,6 +153,12 @@ msgstr "プロジェクト未設定"
 msgid "annotations"
 msgstr "注記"
 
+msgid "Progress Notes"
+msgstr "進捗メモ"
+
+msgid "No progress notes yet."
+msgstr "進捗メモはまだないよ。"
+
 msgid "Target"
 msgstr "希望納期"
 

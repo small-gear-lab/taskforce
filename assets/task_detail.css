@@ -623,3 +623,48 @@ pre {
     gap: 4px;
   }
 }
+
+.annotations {
+  display: grid;
+  gap: 12px;
+}
+
+.annotation {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(23, 21, 18, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.annotation__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.annotation__kind {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(33, 69, 61, 0.1);
+  color: var(--accent-2);
+}
+
+.annotation__sent-at {
+  letter-spacing: 0.04em;
+}
+
+.annotation__body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
