@@ -20,6 +20,21 @@ msgstr "Chatwork"
 msgid "Requester"
 msgstr "依頼主"
 
+msgid "Collaborators"
+msgstr "共同担当者"
+
+msgid "Collaborator"
+msgstr "担当者"
+
+msgid "Collaborator Name"
+msgstr "共同担当者名"
+
+msgid "Collaborator Role"
+msgstr "役割"
+
+msgid "Collaborator Account ID"
+msgstr "共同担当者アカウントID"
+
 msgid "This Request"
 msgstr "この依頼"
 

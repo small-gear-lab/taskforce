@@ -11,6 +11,33 @@ label = "Requester"
 placement = "right"
 
 [[custom_fields]]
+path = "collaborators"
+label = "Collaborators"
+placement = "right"
+default_open = true
+
+[[custom_fields]]
+path = "collaborators[]"
+label = "Collaborator"
+placement = "right"
+default_open = true
+
+[[custom_fields]]
+path = "collaborators[].name"
+label = "Collaborator Name"
+placement = "right"
+
+[[custom_fields]]
+path = "collaborators[].role"
+label = "Collaborator Role"
+placement = "right"
+
+[[custom_fields]]
+path = "collaborators[].account_id"
+label = "Collaborator Account ID"
+placement = "hidden"
+
+[[custom_fields]]
 path = "request_url"
 label = "This Request"
 placement = "right"
