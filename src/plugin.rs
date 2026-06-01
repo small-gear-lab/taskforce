@@ -42,6 +42,8 @@ pub struct PluginCustomField {
     pub placement: PluginFieldPlacement,
     #[serde(default)]
     pub renderer: Option<String>,
+    #[serde(default)]
+    pub default_open: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]

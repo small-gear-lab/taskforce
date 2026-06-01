@@ -162,6 +162,14 @@ function labelFor(path, fallbackKey) {
   return pluginFieldMeta(path)?.label ?? fallbackKey;
 }
 
+function fieldDefaultOpen(path, fallback) {
+  const value = pluginFieldMeta(path)?.default_open;
+  if (typeof value === "boolean") {
+    return value;
+  }
+  return fallback;
+}
+
 async function loadRendererModule(url) {
   if (!url) {
     return null;
@@ -326,7 +334,7 @@ function renderJsonTree(path, key, value) {
     }
 
     const details = document.createElement("details");
-    details.open = false;
+    details.open = fieldDefaultOpen(path, false);
     const summary = document.createElement("summary");
     summary.innerHTML = `
       <span class="tree-key">${labelFor(path, key)}</span>
@@ -373,7 +381,7 @@ function renderJsonTree(path, key, value) {
     }
 
       const details = document.createElement("details");
-      details.open = false;
+      details.open = fieldDefaultOpen(path, false);
     const summary = document.createElement("summary");
     summary.innerHTML = `
       <span class="tree-key">${labelFor(path, key)}</span>

@@ -670,6 +670,7 @@ fn plugin_fields_value() -> Result<Value> {
                     "label": tr_plugin(&manifest, &field.label),
                     "placement": field.placement,
                     "renderer_url": renderer_url,
+                    "default_open": field.default_open,
                 }),
             );
         }
