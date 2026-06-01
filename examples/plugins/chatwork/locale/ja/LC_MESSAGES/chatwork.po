@@ -85,3 +85,6 @@ msgstr "送信日時"
 
 msgid "Body"
 msgstr "本文"
+
+msgid "Subsequent Messages"
+msgstr "追記メッセージ"

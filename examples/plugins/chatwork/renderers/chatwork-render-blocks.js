@@ -2,7 +2,7 @@ function isExternalUrl(value) {
   return typeof value === "string" && /^https?:\/\/\S+$/i.test(value.trim());
 }
 
-function appendLinkifiedText(container, text, helpers) {
+export function appendLinkifiedText(container, text, helpers) {
   const source = text ?? "";
   const urlPattern = /https?:\/\/\S+/gi;
   let lastIndex = 0;
@@ -54,7 +54,7 @@ function findNextMarkup(text, terminator) {
   return indexes.length === 0 ? text.length : Math.min(...indexes);
 }
 
-function parseRenderBlocks(text, terminator) {
+export function parseRenderBlocks(text, terminator) {
   const blocks = [];
   let index = 0;
 
@@ -194,7 +194,7 @@ function parseQuoteBlock(text) {
   };
 }
 
-function normalizeBlocks(value, context) {
+export function normalizeBlocks(value, context) {
   if (Array.isArray(value) && value.length > 0) {
     return value;
   }
@@ -211,7 +211,7 @@ function normalizeBlocks(value, context) {
   return [];
 }
 
-function renderRequestBlock(block, helpers) {
+export function renderRequestBlock(block, helpers) {
   if (block.kind === "rule") {
     const rule = document.createElement("hr");
     rule.className = "request-block request-block--rule";

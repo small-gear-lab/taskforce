@@ -624,6 +624,32 @@ pre {
   }
 }
 
+.subsequent-message__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.subsequent-message__sender {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.subsequent-message__sent-at {
+  letter-spacing: 0.04em;
+}
+
+.subsequent-message__link {
+  margin-left: auto;
+}
+
+.subsequent-message__body {
+  font-size: 15px;
+}
+
 .annotations {
   display: grid;
   gap: 12px;
