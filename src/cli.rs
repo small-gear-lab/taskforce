@@ -116,9 +116,6 @@ pub enum Commands {
         id: u64,
         key: String,
     },
-    ImportChatwork {
-        url: String,
-    },
     Done {
         id: u64,
     },
@@ -311,25 +308,6 @@ mod tests {
     fn parses_serve_command() {
         let cli = Cli::parse_from(["taskforce", "serve"]);
         assert!(matches!(cli.command, Commands::Serve));
-    }
-
-    #[test]
-    fn parses_import_chatwork_command() {
-        let cli = Cli::parse_from([
-            "taskforce",
-            "import-chatwork",
-            "https://www.chatwork.com/#!rid36219958-2111786210627420160",
-        ]);
-
-        match cli.command {
-            Commands::ImportChatwork { url } => {
-                assert_eq!(
-                    url,
-                    "https://www.chatwork.com/#!rid36219958-2111786210627420160"
-                );
-            }
-            other => panic!("unexpected command: {other:?}"),
-        }
     }
 
     #[test]

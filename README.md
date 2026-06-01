@@ -42,7 +42,6 @@ Task creation, editing, status changes, annotations, and all other mutating oper
 - `get`
 - `unset`
 - `search`
-- `import-chatwork`
 - `serve`
 
 ### Web UI
@@ -200,7 +199,6 @@ cargo run -- get 12 git.repository
 cargo run -- unset 12 git.repository
 cargo run -- search --where "status in ('active', 'waiting')"
 cargo run -- search --where "chatwork.requester = '石井'" --json
-cargo run -- import-chatwork "https://www.chatwork.com/#!rid36219958-2111786210627420160"
 cargo run -- serve
 ```
 

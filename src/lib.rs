@@ -14,6 +14,3 @@ pub mod plugin;
 pub mod postgres_backend;
 pub mod search;
 pub mod web;
-
-#[path = "../examples/plugins/chatwork/mod.rs"]
-pub mod chatwork_plugin;
