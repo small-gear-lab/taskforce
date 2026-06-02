@@ -85,6 +85,7 @@ impl PostgresBackend {
             )
             .await?;
 
+        migrate_annotation_idempotency_key(&self.client).await?;
         seed_task_statuses(&self.client).await
     }
 
@@ -296,12 +297,86 @@ impl TaskBackend for PostgresBackend {
         self.fetch_task(id).await
     }
 
-    async fn add_annotation(&self, id: u64, kind: AnnotationKind, body: String) -> Result<Task> {
+    async fn add_annotation(
+        &self,
+        id: u64,
+        kind: AnnotationKind,
+        body: String,
+        idempotency_key: Option<String>,
+    ) -> Result<Task> {
         self.fetch_task(id).await?;
+        if let Some(ref key) = idempotency_key {
+            self.client
+                .execute(
+                    r#"
+                    INSERT INTO task_annotations (task_id, created_at, kind, body, idempotency_key)
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT (task_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+                    DO UPDATE SET body = EXCLUDED.body, kind = EXCLUDED.kind, created_at = EXCLUDED.created_at
+                    "#,
+                    &[&(id as i64), &Utc::now(), &kind.as_str(), &body, key],
+                )
+                .await?;
+        } else {
+            self.client
+                .execute(
+                    "INSERT INTO task_annotations (task_id, created_at, kind, body) VALUES ($1, $2, $3, $4)",
+                    &[&(id as i64), &Utc::now(), &kind.as_str(), &body],
+                )
+                .await?;
+        }
+        self.fetch_task(id).await
+    }
+
+    async fn edit_annotation_by_key(&self, id: u64, key: &str, body: String) -> Result<Task> {
+        let rows_affected = self
+            .client
+            .execute(
+                "UPDATE task_annotations SET body = $1 WHERE task_id = $2 AND idempotency_key = $3",
+                &[&body, &(id as i64), &key],
+            )
+            .await?;
+        if rows_affected == 0 {
+            anyhow::bail!("annotation with key '{key}' not found on task {id}");
+        }
+        self.fetch_task(id).await
+    }
+
+    async fn edit_annotation_by_index(&self, id: u64, index: usize, body: String) -> Result<Task> {
+        let annotation_id = fetch_annotation_id_by_index(&self.client, id, index).await?;
+        let rows_affected = self
+            .client
+            .execute(
+                "UPDATE task_annotations SET body = $1 WHERE id = $2",
+                &[&body, &annotation_id],
+            )
+            .await?;
+        if rows_affected == 0 {
+            anyhow::bail!("annotation at index {index} not found on task {id}");
+        }
+        self.fetch_task(id).await
+    }
+
+    async fn delete_annotation_by_key(&self, id: u64, key: &str) -> Result<Task> {
+        let rows_affected = self
+            .client
+            .execute(
+                "DELETE FROM task_annotations WHERE task_id = $1 AND idempotency_key = $2",
+                &[&(id as i64), &key],
+            )
+            .await?;
+        if rows_affected == 0 {
+            anyhow::bail!("annotation with key '{key}' not found on task {id}");
+        }
+        self.fetch_task(id).await
+    }
+
+    async fn delete_annotation_by_index(&self, id: u64, index: usize) -> Result<Task> {
+        let annotation_id = fetch_annotation_id_by_index(&self.client, id, index).await?;
         self.client
             .execute(
-                "INSERT INTO task_annotations (task_id, created_at, kind, body) VALUES ($1, $2, $3, $4)",
-                &[&(id as i64), &Utc::now(), &kind.as_str(), &body],
+                "DELETE FROM task_annotations WHERE id = $1",
+                &[&annotation_id],
             )
             .await?;
         self.fetch_task(id).await
@@ -418,7 +493,7 @@ async fn fetch_annotations(client: &Client, id: u64) -> Result<Vec<Annotation>> 
     let rows = client
         .query(
             r#"
-            SELECT created_at, kind, body
+            SELECT created_at, kind, body, idempotency_key
             FROM task_annotations
             WHERE task_id = $1
             ORDER BY created_at ASC, id ASC
@@ -433,9 +508,55 @@ async fn fetch_annotations(client: &Client, id: u64) -> Result<Vec<Annotation>> 
                 created_at: row.get("created_at"),
                 kind: parse_annotation_kind(&row.get::<_, String>("kind")),
                 body: row.get("body"),
+                idempotency_key: row.get("idempotency_key"),
             })
         })
         .collect()
+}
+
+async fn fetch_annotation_id_by_index(client: &Client, task_id: u64, index: usize) -> Result<i64> {
+    let rows = client
+        .query(
+            "SELECT id FROM task_annotations WHERE task_id = $1 ORDER BY created_at ASC, id ASC",
+            &[&(task_id as i64)],
+        )
+        .await?;
+    let row = rows.get(index).ok_or_else(|| {
+        anyhow!(
+            "annotation index {index} out of range (task {task_id} has {} annotations)",
+            rows.len()
+        )
+    })?;
+    Ok(row.get(0))
+}
+
+async fn migrate_annotation_idempotency_key(client: &Client) -> Result<()> {
+    client
+        .execute(
+            "ALTER TABLE task_annotations ADD COLUMN IF NOT EXISTS idempotency_key TEXT NULL",
+            &[],
+        )
+        .await?;
+    client
+        .execute(
+            r#"
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'task_annotations_task_id_idempotency_key_key'
+                ) THEN
+                    ALTER TABLE task_annotations
+                    ADD CONSTRAINT task_annotations_task_id_idempotency_key_key
+                    UNIQUE (task_id, idempotency_key);
+                END IF;
+            END;
+            $$
+            "#,
+            &[],
+        )
+        .await?;
+    Ok(())
 }
 
 fn map_task_row(row: &Row) -> Result<Task> {

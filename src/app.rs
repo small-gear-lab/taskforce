@@ -128,10 +128,40 @@ pub async fn run(cli: Cli) -> Result<()> {
                 println!("{} {}", task.id_text(), task.core.status);
             }
         }
-        Commands::Note { id, body, kind } => {
-            let task = client.add_annotation(id, kind, body).await?;
+        Commands::Note {
+            id,
+            body,
+            kind,
+            key,
+        } => {
+            let task = client.add_annotation(id, kind, body, key).await?;
             let added = task.annotations.last().expect("annotation just added");
             println!("noted {} [{}] {}", task.id_text(), added.kind, added.body);
+        }
+        Commands::NoteEdit {
+            id,
+            body,
+            key,
+            index,
+        } => {
+            let task = if let Some(k) = key {
+                client.edit_annotation_by_key(id, &k, body).await?
+            } else if let Some(n) = index {
+                client.edit_annotation_by_index(id, n, body).await?
+            } else {
+                anyhow::bail!("note-edit requires --key or --index");
+            };
+            println!("updated {} annotation", task.id_text());
+        }
+        Commands::NoteDelete { id, key, index } => {
+            let task = if let Some(k) = key {
+                client.delete_annotation_by_key(id, &k).await?
+            } else if let Some(n) = index {
+                client.delete_annotation_by_index(id, n).await?
+            } else {
+                anyhow::bail!("note-delete requires --key or --index");
+            };
+            println!("deleted {} annotation", task.id_text());
         }
         Commands::Get { id, key } => match client.get_extra(id, &key).await? {
             Some(value) => println!("{}", serde_json::to_string_pretty(&value)?),

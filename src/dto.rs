@@ -55,6 +55,8 @@ pub struct AnnotationDto {
     pub created_at: String,
     pub kind: String,
     pub body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
 }
 
 impl From<&Task> for TaskDto {
@@ -116,6 +118,7 @@ impl From<&Annotation> for AnnotationDto {
             created_at: annotation.created_at.to_rfc3339(),
             kind: annotation.kind.to_string(),
             body: annotation.body.clone(),
+            idempotency_key: annotation.idempotency_key.clone(),
         }
     }
 }

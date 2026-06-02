@@ -107,6 +107,24 @@ pub enum Commands {
         body: String,
         #[arg(long, default_value = "note")]
         kind: AnnotationKind,
+        /// Idempotency key: if given, upserts instead of always inserting
+        #[arg(long)]
+        key: Option<String>,
+    },
+    NoteEdit {
+        id: u64,
+        body: String,
+        #[arg(long, conflicts_with = "index")]
+        key: Option<String>,
+        #[arg(long, conflicts_with = "key")]
+        index: Option<usize>,
+    },
+    NoteDelete {
+        id: u64,
+        #[arg(long, conflicts_with = "index")]
+        key: Option<String>,
+        #[arg(long, conflicts_with = "key")]
+        index: Option<usize>,
     },
     Get {
         id: u64,
@@ -247,10 +265,16 @@ mod tests {
             "progress",
         ]);
         match cli.command {
-            Commands::Note { id, body, kind } => {
+            Commands::Note {
+                id,
+                body,
+                kind,
+                key,
+            } => {
                 assert_eq!(id, 7);
                 assert_eq!(body, "waiting on design");
                 assert_eq!(kind, AnnotationKind::Progress);
+                assert_eq!(key, None);
             }
             other => panic!("unexpected command: {other:?}"),
         }
