@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/stop-checks.sh",
+            "statusMessage": "Running fmt and clippy checks"
+          }
+        ]
+      }
+    ]
+  }
+}

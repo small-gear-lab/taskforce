@@ -15,3 +15,11 @@ Fix the reported issues, then rerun `cargo clippy --all-targets -- -D warnings` 
 EOF
   exit 1
 fi
+
+if ! TASKFORCE_LOCALE=ja cargo test; then
+  cat >&2 <<'EOF'
+Stop hook: tests failed.
+Fix the failing tests, then rerun `TASKFORCE_LOCALE=ja cargo test` before continuing.
+EOF
+  exit 1
+fi
