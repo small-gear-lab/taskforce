@@ -36,6 +36,8 @@ jobs:
 
       - name: Test
         run: cargo test
+        env:
+          TASKFORCE_LOCALE: ja
 
   build-matrix:
     runs-on: ${{ matrix.os }}
