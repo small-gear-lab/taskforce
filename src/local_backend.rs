@@ -76,6 +76,7 @@ impl LocalBackend {
         seed_task_statuses(&connection)?;
         migrate_legacy_status_column(&connection)?;
         migrate_description_column(&connection)?;
+        migrate_annotation_idempotency_key(&connection)?;
         Ok(())
     }
 
@@ -392,15 +393,81 @@ impl TaskBackend for LocalBackend {
         self.fetch_task(id)
     }
 
-    async fn add_annotation(&self, id: u64, kind: AnnotationKind, body: String) -> Result<Task> {
+    async fn add_annotation(
+        &self,
+        id: u64,
+        kind: AnnotationKind,
+        body: String,
+        idempotency_key: Option<String>,
+    ) -> Result<Task> {
         self.fetch_task(id)?;
         let connection = self.connection()?;
         let sqlite_id = sqlite_task_id(id)?;
-        connection.execute(
-            "INSERT INTO task_annotations (task_id, created_at, kind, body) VALUES (?1, ?2, ?3, ?4)",
-            params![sqlite_id, Utc::now().to_rfc3339(), kind.as_str(), body],
-        )?;
+        if let Some(ref key) = idempotency_key {
+            connection.execute(
+                r#"
+                INSERT INTO task_annotations (task_id, created_at, kind, body, idempotency_key)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                ON CONFLICT (task_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+                DO UPDATE SET body = excluded.body, kind = excluded.kind, created_at = excluded.created_at
+                "#,
+                params![sqlite_id, Utc::now().to_rfc3339(), kind.as_str(), body, key],
+            )?;
+        } else {
+            connection.execute(
+                "INSERT INTO task_annotations (task_id, created_at, kind, body) VALUES (?1, ?2, ?3, ?4)",
+                params![sqlite_id, Utc::now().to_rfc3339(), kind.as_str(), body],
+            )?;
+        }
+        self.fetch_task(id)
+    }
 
+    async fn edit_annotation_by_key(&self, id: u64, key: &str, body: String) -> Result<Task> {
+        let connection = self.connection()?;
+        let sqlite_id = sqlite_task_id(id)?;
+        let rows_affected = connection.execute(
+            "UPDATE task_annotations SET body = ?1 WHERE task_id = ?2 AND idempotency_key = ?3",
+            params![body, sqlite_id, key],
+        )?;
+        if rows_affected == 0 {
+            anyhow::bail!("annotation with key '{key}' not found on task {id}");
+        }
+        self.fetch_task(id)
+    }
+
+    async fn edit_annotation_by_index(&self, id: u64, index: usize, body: String) -> Result<Task> {
+        let connection = self.connection()?;
+        let annotation_id = fetch_annotation_id_by_index(&connection, id, index)?;
+        let rows_affected = connection.execute(
+            "UPDATE task_annotations SET body = ?1 WHERE id = ?2",
+            params![body, annotation_id],
+        )?;
+        if rows_affected == 0 {
+            anyhow::bail!("annotation at index {index} not found on task {id}");
+        }
+        self.fetch_task(id)
+    }
+
+    async fn delete_annotation_by_key(&self, id: u64, key: &str) -> Result<Task> {
+        let connection = self.connection()?;
+        let sqlite_id = sqlite_task_id(id)?;
+        let rows_affected = connection.execute(
+            "DELETE FROM task_annotations WHERE task_id = ?1 AND idempotency_key = ?2",
+            params![sqlite_id, key],
+        )?;
+        if rows_affected == 0 {
+            anyhow::bail!("annotation with key '{key}' not found on task {id}");
+        }
+        self.fetch_task(id)
+    }
+
+    async fn delete_annotation_by_index(&self, id: u64, index: usize) -> Result<Task> {
+        let connection = self.connection()?;
+        let annotation_id = fetch_annotation_id_by_index(&connection, id, index)?;
+        connection.execute(
+            "DELETE FROM task_annotations WHERE id = ?1",
+            params![annotation_id],
+        )?;
         self.fetch_task(id)
     }
 
@@ -489,7 +556,7 @@ fn fetch_annotations(connection: &Connection, id: u64) -> Result<Vec<Annotation>
     let sqlite_id = sqlite_task_id(id)?;
     let mut statement = connection.prepare(
         r#"
-        SELECT created_at, kind, body
+        SELECT created_at, kind, body, idempotency_key
         FROM task_annotations
         WHERE task_id = ?1
         ORDER BY created_at ASC, id ASC
@@ -499,6 +566,7 @@ fn fetch_annotations(connection: &Connection, id: u64) -> Result<Vec<Annotation>
         let created_at: String = row.get(0)?;
         let kind: String = row.get(1)?;
         let body: String = row.get(2)?;
+        let idempotency_key: Option<String> = row.get(3)?;
         Ok(Annotation {
             created_at: DateTime::parse_from_rfc3339(&created_at)
                 .map(|value| value.with_timezone(&Utc))
@@ -507,11 +575,54 @@ fn fetch_annotations(connection: &Connection, id: u64) -> Result<Vec<Annotation>
                 decode_error(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
             })?,
             body,
+            idempotency_key,
         })
     })?;
 
     rows.collect::<rusqlite::Result<Vec<_>>>()
         .map_err(Into::into)
+}
+
+fn fetch_annotation_id_by_index(
+    connection: &Connection,
+    task_id: u64,
+    index: usize,
+) -> Result<i64> {
+    let sqlite_id = sqlite_task_id(task_id)?;
+    let mut statement = connection.prepare(
+        "SELECT id FROM task_annotations WHERE task_id = ?1 ORDER BY created_at ASC, id ASC",
+    )?;
+    let ids: Vec<i64> = statement
+        .query_map(params![sqlite_id], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    ids.get(index).copied().ok_or_else(|| {
+        anyhow!(
+            "annotation index {index} out of range (task {task_id} has {} annotations)",
+            ids.len()
+        )
+    })
+}
+
+fn migrate_annotation_idempotency_key(connection: &Connection) -> Result<()> {
+    let has_column = connection
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('task_annotations') WHERE name = 'idempotency_key'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0);
+
+    if has_column == 0 {
+        connection.execute(
+            "ALTER TABLE task_annotations ADD COLUMN idempotency_key TEXT NULL",
+            [],
+        )?;
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_task_annotations_idempotency_key ON task_annotations (task_id, idempotency_key) WHERE idempotency_key IS NOT NULL",
+            [],
+        )?;
+    }
+    Ok(())
 }
 
 fn sqlite_task_id(id: u64) -> Result<i64> {

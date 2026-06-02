@@ -140,6 +140,7 @@ pub struct Annotation {
     pub created_at: DateTime<Utc>,
     pub kind: AnnotationKind,
     pub body: String,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -309,7 +310,17 @@ pub trait TaskBackend {
     async fn add(&self, input: NewTaskInput) -> Result<Task>;
     async fn edit(&self, id: u64, input: UpdateTaskInput) -> Result<Task>;
     async fn get_task(&self, id: u64) -> Result<Task>;
-    async fn add_annotation(&self, id: u64, kind: AnnotationKind, body: String) -> Result<Task>;
+    async fn add_annotation(
+        &self,
+        id: u64,
+        kind: AnnotationKind,
+        body: String,
+        idempotency_key: Option<String>,
+    ) -> Result<Task>;
+    async fn edit_annotation_by_key(&self, id: u64, key: &str, body: String) -> Result<Task>;
+    async fn edit_annotation_by_index(&self, id: u64, index: usize, body: String) -> Result<Task>;
+    async fn delete_annotation_by_key(&self, id: u64, key: &str) -> Result<Task>;
+    async fn delete_annotation_by_index(&self, id: u64, index: usize) -> Result<Task>;
     async fn set_status(&self, id: u64, status: TaskStatus) -> Result<Task>;
     async fn set_extra(&self, id: u64, key: &str, value: Value) -> Result<Task>;
     async fn get_extra(&self, id: u64, key: &str) -> Result<Option<Value>>;

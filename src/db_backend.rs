@@ -80,10 +80,52 @@ impl TaskBackend for ConfiguredBackend {
         }
     }
 
-    async fn add_annotation(&self, id: u64, kind: AnnotationKind, body: String) -> Result<Task> {
+    async fn add_annotation(
+        &self,
+        id: u64,
+        kind: AnnotationKind,
+        body: String,
+        idempotency_key: Option<String>,
+    ) -> Result<Task> {
         match self {
-            Self::Sqlite(backend) => backend.add_annotation(id, kind, body).await,
-            Self::Postgres(backend) => backend.add_annotation(id, kind, body).await,
+            Self::Sqlite(backend) => {
+                backend
+                    .add_annotation(id, kind, body, idempotency_key)
+                    .await
+            }
+            Self::Postgres(backend) => {
+                backend
+                    .add_annotation(id, kind, body, idempotency_key)
+                    .await
+            }
+        }
+    }
+
+    async fn edit_annotation_by_key(&self, id: u64, key: &str, body: String) -> Result<Task> {
+        match self {
+            Self::Sqlite(backend) => backend.edit_annotation_by_key(id, key, body).await,
+            Self::Postgres(backend) => backend.edit_annotation_by_key(id, key, body).await,
+        }
+    }
+
+    async fn edit_annotation_by_index(&self, id: u64, index: usize, body: String) -> Result<Task> {
+        match self {
+            Self::Sqlite(backend) => backend.edit_annotation_by_index(id, index, body).await,
+            Self::Postgres(backend) => backend.edit_annotation_by_index(id, index, body).await,
+        }
+    }
+
+    async fn delete_annotation_by_key(&self, id: u64, key: &str) -> Result<Task> {
+        match self {
+            Self::Sqlite(backend) => backend.delete_annotation_by_key(id, key).await,
+            Self::Postgres(backend) => backend.delete_annotation_by_key(id, key).await,
+        }
+    }
+
+    async fn delete_annotation_by_index(&self, id: u64, index: usize) -> Result<Task> {
+        match self {
+            Self::Sqlite(backend) => backend.delete_annotation_by_index(id, index).await,
+            Self::Postgres(backend) => backend.delete_annotation_by_index(id, index).await,
         }
     }
 

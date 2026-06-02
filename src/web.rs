@@ -1052,6 +1052,37 @@ mod tests {
             _id: u64,
             _kind: AnnotationKind,
             _body: String,
+            _idempotency_key: Option<String>,
+        ) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        async fn edit_annotation_by_key(
+            &self,
+            _id: u64,
+            _key: &str,
+            _body: String,
+        ) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        async fn edit_annotation_by_index(
+            &self,
+            _id: u64,
+            _index: usize,
+            _body: String,
+        ) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        async fn delete_annotation_by_key(&self, _id: u64, _key: &str) -> anyhow::Result<Task> {
+            unreachable!("not used in web tests")
+        }
+
+        async fn delete_annotation_by_index(
+            &self,
+            _id: u64,
+            _index: usize,
         ) -> anyhow::Result<Task> {
             unreachable!("not used in web tests")
         }
