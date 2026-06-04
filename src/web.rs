@@ -999,6 +999,9 @@ const DETAIL_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
             <div class="section">
               <div id="plugin-extra-sections" class="kv-list"></div>
             </div>
+            <section class="section" id="task-annotations-section" hidden>
+              <div class="annotations" id="task-annotations"></div>
+            </section>
           </aside>
         </div>
       </section>
@@ -2039,5 +2042,38 @@ mod tests {
         assert!(text.contains("projectRow.hidden = !task.core.project;"));
         assert!(text.contains("scheduleSection.hidden = scheduleCount === 0;"));
         assert!(text.contains("projectTagsSection.hidden = projectRow.hidden && tagsRow.hidden;"));
+    }
+
+    #[tokio::test]
+    async fn detail_page_includes_annotations_section_elements() {
+        let app = crate::web::app_router(
+            MockBackend { tasks: Vec::new() },
+            crate::config::ListConfig::default(),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/tasks/1")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+
+        assert!(
+            text.contains("id=\"task-annotations-section\""),
+            "task-annotations-section element must exist so renderAnnotations() can mount"
+        );
+        assert!(
+            text.contains("id=\"task-annotations\""),
+            "task-annotations element must exist so renderAnnotations() can mount"
+        );
     }
 }
