@@ -9,6 +9,8 @@ use crate::backend::{AnnotationKind, TaskStatus};
 #[derive(Debug, Parser)]
 #[command(name = "taskforce")]
 #[command(about = "Local structured task workflow")]
+#[command(version = concat!("v", env!("CARGO_PKG_VERSION")))]
+#[command(long_version = concat!("v", env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")"))]
 pub struct Cli {
     #[arg(long, global = true)]
     pub env: Option<String>,
