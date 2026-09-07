@@ -618,6 +618,7 @@ mod tests {
 
     #[test]
     fn loads_postgres_backend_settings_from_toml() -> Result<()> {
+        let _guard = env_lock().lock().expect("env lock");
         let path = unique_temp_path("taskforce-postgres-config");
         fs::write(
             &path,
