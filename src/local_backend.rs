@@ -176,10 +176,10 @@ impl TaskBackend for LocalBackend {
         }
 
         for task in tasks.iter_mut() {
-            if let Some(id) = task.id {
-                if let Some(annotations) = by_task.remove(&sqlite_task_id(id)?) {
-                    task.annotations = annotations;
-                }
+            if let Some(id) = task.id
+                && let Some(annotations) = by_task.remove(&sqlite_task_id(id)?)
+            {
+                task.annotations = annotations;
             }
         }
         Ok(())

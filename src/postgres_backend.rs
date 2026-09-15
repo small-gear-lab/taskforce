@@ -145,10 +145,10 @@ impl TaskBackend for PostgresBackend {
         }
 
         for task in tasks.iter_mut() {
-            if let Some(id) = task.id {
-                if let Some(annotations) = by_task.remove(&(id as i64)) {
-                    task.annotations = annotations;
-                }
+            if let Some(id) = task.id
+                && let Some(annotations) = by_task.remove(&(id as i64))
+            {
+                task.annotations = annotations;
             }
         }
         Ok(())
