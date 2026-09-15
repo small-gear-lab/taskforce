@@ -109,6 +109,51 @@ impl TaskBackend for PostgresBackend {
         rows.iter().map(map_task_row).collect()
     }
 
+    async fn attach_annotations(&self, tasks: &mut [Task]) -> Result<()> {
+        let ids: Vec<i64> = tasks
+            .iter()
+            .filter_map(|t| t.id)
+            .map(|id| id as i64)
+            .collect();
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let rows = self
+            .client
+            .query(
+                r#"
+                SELECT task_id, created_at, kind, body, idempotency_key
+                FROM task_annotations
+                WHERE task_id = ANY($1)
+                ORDER BY task_id ASC, created_at ASC, id ASC
+                "#,
+                &[&ids],
+            )
+            .await?;
+
+        let mut by_task: std::collections::HashMap<i64, Vec<Annotation>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let task_id: i64 = row.get("task_id");
+            by_task.entry(task_id).or_default().push(Annotation {
+                created_at: row.get("created_at"),
+                kind: parse_annotation_kind(&row.get::<_, String>("kind")),
+                body: row.get("body"),
+                idempotency_key: row.get("idempotency_key"),
+            });
+        }
+
+        for task in tasks.iter_mut() {
+            if let Some(id) = task.id {
+                if let Some(annotations) = by_task.remove(&(id as i64)) {
+                    task.annotations = annotations;
+                }
+            }
+        }
+        Ok(())
+    }
+
     async fn list_all(&self) -> Result<Vec<Task>> {
         let rows = self.client.query(TASK_LIST_ALL_SQL, &[]).await?;
         rows.iter().map(map_task_row).collect()

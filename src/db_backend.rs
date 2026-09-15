@@ -73,6 +73,13 @@ impl TaskBackend for ConfiguredBackend {
         }
     }
 
+    async fn attach_annotations(&self, tasks: &mut [Task]) -> Result<()> {
+        match self {
+            Self::Sqlite(backend) => backend.attach_annotations(tasks).await,
+            Self::Postgres(backend) => backend.attach_annotations(tasks).await,
+        }
+    }
+
     async fn get_task(&self, id: u64) -> Result<Task> {
         match self {
             Self::Sqlite(backend) => backend.get_task(id).await,

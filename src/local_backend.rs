@@ -124,6 +124,67 @@ impl LocalBackend {
 
 #[async_trait]
 impl TaskBackend for LocalBackend {
+    async fn attach_annotations(&self, tasks: &mut [Task]) -> Result<()> {
+        let ids: Vec<i64> = tasks
+            .iter()
+            .filter_map(|t| t.id)
+            .map(sqlite_task_id)
+            .collect::<Result<Vec<_>>>()?;
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let connection = self.connection()?;
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            r#"
+            SELECT task_id, created_at, kind, body, idempotency_key
+            FROM task_annotations
+            WHERE task_id IN ({placeholders})
+            ORDER BY task_id ASC, created_at ASC, id ASC
+            "#
+        );
+        let mut statement = connection.prepare(&sql)?;
+        let params_dyn: Vec<&dyn rusqlite::ToSql> =
+            ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let rows = statement.query_map(params_dyn.as_slice(), |row| {
+            let task_id: i64 = row.get(0)?;
+            let created_at: String = row.get(1)?;
+            let kind: String = row.get(2)?;
+            let body: String = row.get(3)?;
+            let idempotency_key: Option<String> = row.get(4)?;
+            Ok((
+                task_id,
+                Annotation {
+                    created_at: DateTime::parse_from_rfc3339(&created_at)
+                        .map(|value| value.with_timezone(&Utc))
+                        .map_err(decode_error)?,
+                    kind: parse_annotation_kind(&kind).map_err(|error| {
+                        decode_error(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+                    })?,
+                    body,
+                    idempotency_key,
+                },
+            ))
+        })?;
+
+        let mut by_task: std::collections::HashMap<i64, Vec<Annotation>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let (task_id, annotation) = row?;
+            by_task.entry(task_id).or_default().push(annotation);
+        }
+
+        for task in tasks.iter_mut() {
+            if let Some(id) = task.id {
+                if let Some(annotations) = by_task.remove(&sqlite_task_id(id)?) {
+                    task.annotations = annotations;
+                }
+            }
+        }
+        Ok(())
+    }
+
     async fn list_pending(&self) -> Result<Vec<Task>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
@@ -792,7 +853,7 @@ mod tests {
     use anyhow::Result;
 
     use super::LocalBackend;
-    use crate::backend::{NewTaskInput, TaskBackend, UpdateTaskInput};
+    use crate::backend::{AnnotationKind, NewTaskInput, TaskBackend, UpdateTaskInput};
     use crate::search::TaskSearch;
 
     #[tokio::test]
@@ -822,6 +883,62 @@ mod tests {
             Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 5).expect("date"))
         );
         assert_eq!(tasks[0].core.tags, vec!["release"]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn attach_annotations_bulk_fetches_for_multiple_tasks() -> Result<()> {
+        let backend = LocalBackend::new(unique_db_path("taskforce-local-backend-annotations"))?;
+
+        let first = backend
+            .add(NewTaskInput {
+                title: "Task with notes".into(),
+                ..Default::default()
+            })
+            .await?;
+        let second = backend
+            .add(NewTaskInput {
+                title: "Task without notes".into(),
+                ..Default::default()
+            })
+            .await?;
+
+        backend
+            .add_annotation(
+                first.id.expect("id"),
+                AnnotationKind::Note,
+                "first note".into(),
+                None,
+            )
+            .await?;
+        backend
+            .add_annotation(
+                first.id.expect("id"),
+                AnnotationKind::Progress,
+                "second note".into(),
+                None,
+            )
+            .await?;
+
+        let mut tasks = backend.list_pending().await?;
+        assert!(tasks.iter().all(|task| task.annotations.is_empty()));
+
+        backend.attach_annotations(&mut tasks).await?;
+
+        let with_notes = tasks
+            .iter()
+            .find(|task| task.id == first.id)
+            .expect("first task present");
+        assert_eq!(with_notes.annotations.len(), 2);
+        assert_eq!(with_notes.annotations[0].body, "first note");
+        assert_eq!(with_notes.annotations[1].body, "second note");
+
+        let without_notes = tasks
+            .iter()
+            .find(|task| task.id == second.id)
+            .expect("second task present");
+        assert!(without_notes.annotations.is_empty());
+
         Ok(())
     }
 

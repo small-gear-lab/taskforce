@@ -18,15 +18,22 @@ pub async fn run(cli: Cli) -> Result<()> {
     let client = ConfiguredBackend::open(&config).await?;
 
     match cli.command {
-        Commands::List { json } => {
-            let tasks = client.list_pending().await?;
+        Commands::List { json, include } => {
+            let mut tasks = client.list_pending().await?;
+            if include.iter().any(|name| name == "annotations") {
+                client.attach_annotations(&mut tasks).await?;
+            }
             print_tasks(&tasks, json)?;
         }
         Commands::Search {
             where_clauses,
             json,
+            include,
         } => {
-            let tasks = client.search(&TaskSearch::new(where_clauses)).await?;
+            let mut tasks = client.search(&TaskSearch::new(where_clauses)).await?;
+            if include.iter().any(|name| name == "annotations") {
+                client.attach_annotations(&mut tasks).await?;
+            }
             print_tasks(&tasks, json)?;
         }
         Commands::Show { id, json } => {

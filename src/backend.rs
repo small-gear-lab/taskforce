@@ -330,4 +330,18 @@ pub trait TaskBackend {
     async fn mark_mistaken(&self, id: u64) -> Result<Task>;
     async fn mark_duplicated(&self, id: u64) -> Result<Task>;
     async fn next_task(&self) -> Result<Option<Task>>;
+
+    /// `--include` で明示的に要求された場合にのみ呼ばれる。
+    /// list/search 結果の各タスクに annotations を埋める。
+    /// デフォルト実装は get_task を1件ずつ呼ぶ素朴な版（正しさ優先）。
+    /// バルク取得できるバックエンドは上書きしてオーバーヘッドを減らすこと。
+    async fn attach_annotations(&self, tasks: &mut [Task]) -> Result<()> {
+        for task in tasks.iter_mut() {
+            if let Some(id) = task.id {
+                let full = self.get_task(id).await?;
+                task.annotations = full.annotations;
+            }
+        }
+        Ok(())
+    }
 }

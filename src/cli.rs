@@ -24,12 +24,18 @@ pub enum Commands {
     List {
         #[arg(long)]
         json: bool,
+        /// 追加で埋め込みたいフィールドをカンマ区切りで指定する（例: --include=annotations）
+        #[arg(long, value_delimiter = ',')]
+        include: Vec<String>,
     },
     Search {
         #[arg(long = "where")]
         where_clauses: Vec<String>,
         #[arg(long)]
         json: bool,
+        /// 追加で埋め込みたいフィールドをカンマ区切りで指定する（例: --include=annotations）
+        #[arg(long, value_delimiter = ',')]
+        include: Vec<String>,
     },
     Show {
         id: u64,
@@ -237,11 +243,13 @@ mod tests {
             Commands::Search {
                 where_clauses,
                 json,
+                include,
             } => {
                 assert_eq!(where_clauses.len(), 2);
                 assert_eq!(where_clauses[0], "status = 'active'");
                 assert_eq!(where_clauses[1], "chatwork.requester = '石井'");
                 assert!(!json);
+                assert!(include.is_empty());
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -340,7 +348,10 @@ mod tests {
     fn parses_list_and_search_json_flags() {
         let cli = Cli::parse_from(["taskforce", "list", "--json"]);
         match cli.command {
-            Commands::List { json } => assert!(json),
+            Commands::List { json, include } => {
+                assert!(json);
+                assert!(include.is_empty());
+            }
             other => panic!("unexpected command: {other:?}"),
         }
 
@@ -355,9 +366,23 @@ mod tests {
             Commands::Search {
                 where_clauses,
                 json,
+                include,
             } => {
                 assert_eq!(where_clauses, vec!["status = 'active'"]);
                 assert!(json);
+                assert!(include.is_empty());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_list_include_flag() {
+        let cli = Cli::parse_from(["taskforce", "list", "--json", "--include=annotations"]);
+        match cli.command {
+            Commands::List { json, include } => {
+                assert!(json);
+                assert_eq!(include, vec!["annotations"]);
             }
             other => panic!("unexpected command: {other:?}"),
         }
