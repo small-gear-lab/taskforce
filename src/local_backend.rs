@@ -265,10 +265,29 @@ impl TaskBackend for LocalBackend {
                 WHEN 'duplicated' THEN 7
                 ELSE 8
               END ASC,
-              CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
-              deadline ASC,
-              CASE WHEN target_date IS NULL THEN 1 ELSE 0 END,
-              target_date ASC,
+              -- Terminal statuses (done/abandoned/mistaken/duplicated) sort by most-recently updated first;
+              -- open statuses keep the deadline/target_date/created_at ordering below.
+              CASE
+                WHEN task_statuses.name IN ('done', 'abandoned', 'mistaken', 'duplicated') THEN NULL
+                WHEN deadline IS NULL THEN 1
+                ELSE 0
+              END ASC,
+              CASE
+                WHEN task_statuses.name IN ('done', 'abandoned', 'mistaken', 'duplicated') THEN NULL
+                ELSE deadline
+              END ASC,
+              CASE
+                WHEN task_statuses.name IN ('done', 'abandoned', 'mistaken', 'duplicated') THEN NULL
+                WHEN target_date IS NULL THEN 1
+                ELSE 0
+              END ASC,
+              CASE
+                WHEN task_statuses.name IN ('done', 'abandoned', 'mistaken', 'duplicated') THEN NULL
+                ELSE target_date
+              END ASC,
+              CASE
+                WHEN task_statuses.name IN ('done', 'abandoned', 'mistaken', 'duplicated') THEN updated_at
+              END DESC,
               created_at ASC
             "#,
         )?;
