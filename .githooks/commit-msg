@@ -1,0 +1,9 @@
+#!/bin/sh
+# Copyright (c) 2026- Masaki Ishii
+# Copyright (c) 2026- Small Gear Lab
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+if grep -qiE 'Co-Authored-By|Claude-Session' "$1"; then
+  echo "commit-msg: Co-Authored-By/Claude-Session lines are prohibited in this repo (see CLAUDE.md)." >&2
+  exit 1
+fi

@@ -1,5 +1,18 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command'); if printf '%s\\n' \"$cmd\" | grep -qiE 'Co-Authored-By|Claude-Session'; then printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Co-Authored-By/Claude-Session lines are prohibited in this repo (see CLAUDE.md). Remove them before committing.\"}}'; fi",
+            "if": "Bash(git commit*)",
+            "statusMessage": "Checking commit message for prohibited attribution lines"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
