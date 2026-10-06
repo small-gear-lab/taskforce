@@ -61,7 +61,19 @@ Task creation, editing, status changes, annotations, and all other mutating oper
 - profile-based environment selection
 - Supabase-compatible TLS verification
 
-### Plugins
+### Localization
+
+Translation catalogs (`locale/<locale>/LC_MESSAGES/taskforce.mo`) are searched in this order:
+
+1. `$TASKFORCE_LOCALE_ROOT/locale/`
+2. `~/.config/taskforce/locale/` (`$XDG_CONFIG_HOME/taskforce/locale/`)
+3. `locale/` inside the source tree the binary was built from (kept for backward compatibility; the path is fixed at build time)
+
+The locale is taken from `TASKFORCE_LOCALE`, `LC_MESSAGES`, or `LANG`, in that order.
+To use the bundled Japanese catalog from an installed binary, copy or symlink the repository's
+`locale/` directory to `~/.config/taskforce/locale`.
+
+## Plugins
 
 - manifest-driven custom fields
 - plugin i18n catalogs

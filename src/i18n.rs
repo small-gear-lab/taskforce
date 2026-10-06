@@ -30,20 +30,27 @@ pub fn tr(message: &str) -> String {
 }
 
 fn load_catalog() -> Result<Option<Catalog>> {
-    let locale_root = locale_root().join("locale");
-
-    for locale in preferred_locale_candidates() {
-        let path = locale_root
-            .join(&locale)
-            .join("LC_MESSAGES")
-            .join("taskforce.mo");
-
-        if path.is_file() {
-            return Ok(Some(parse_catalog(&path)?));
-        }
+    match find_catalog_path(&locale_roots(), &preferred_locale_candidates()) {
+        Some(path) => Ok(Some(parse_catalog(&path)?)),
+        None => Ok(None),
     }
+}
 
-    Ok(None)
+/// First existing `<root>/locale/<locale>/LC_MESSAGES/taskforce.mo`. Roots take
+/// priority over locale candidates, so an earlier root wins over a later one
+/// even when the later one has a more specific locale.
+fn find_catalog_path(roots: &[PathBuf], candidates: &[String]) -> Option<PathBuf> {
+    roots
+        .iter()
+        .flat_map(|root| {
+            candidates.iter().map(move |locale| {
+                root.join("locale")
+                    .join(locale)
+                    .join("LC_MESSAGES")
+                    .join("taskforce.mo")
+            })
+        })
+        .find(|path| path.is_file())
 }
 
 fn parse_catalog(path: &Path) -> Result<Catalog> {
@@ -51,12 +58,15 @@ fn parse_catalog(path: &Path) -> Result<Catalog> {
     Ok(Catalog::parse(file)?)
 }
 
-fn locale_root() -> PathBuf {
-    if let Ok(path) = std::env::var("TASKFORCE_LOCALE_ROOT") {
-        return PathBuf::from(path);
-    }
-
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+/// Directories searched for `locale/`, highest priority first: an explicit
+/// `TASKFORCE_LOCALE_ROOT`, the config directory, then the source tree this
+/// binary was built from (kept for backward compatibility).
+fn locale_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    roots.extend(std::env::var_os("TASKFORCE_LOCALE_ROOT").map(PathBuf::from));
+    roots.extend(crate::config::config_dir());
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    roots
 }
 
 pub(crate) fn preferred_locale_candidates() -> Vec<String> {
@@ -110,7 +120,27 @@ fn is_meaningful_locale(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::push_locale_candidates;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{find_catalog_path, parse_catalog, push_locale_candidates};
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{nanos}"))
+    }
+
+    fn touch_catalog(root: &Path, locale: &str) -> PathBuf {
+        let dir = root.join("locale").join(locale).join("LC_MESSAGES");
+        fs::create_dir_all(&dir).expect("create catalog dir");
+        let path = dir.join("taskforce.mo");
+        fs::write(&path, b"").expect("write catalog");
+        path
+    }
 
     #[test]
     fn builds_locale_fallback_candidates() {
@@ -132,5 +162,50 @@ mod tests {
         push_locale_candidates(&mut candidates, "ja_JP.UTF-8");
         push_locale_candidates(&mut candidates, "ja_JP");
         assert_eq!(candidates, vec!["ja_JP.UTF-8", "ja_JP", "ja"]);
+    }
+
+    #[test]
+    fn earlier_roots_win_over_more_specific_locales() {
+        let first = unique_temp_dir("taskforce-i18n-first");
+        let second = unique_temp_dir("taskforce-i18n-second");
+        let first_ja = touch_catalog(&first, "ja");
+        touch_catalog(&second, "ja_JP");
+        let candidates = vec!["ja_JP".to_string(), "ja".to_string()];
+
+        let found = find_catalog_path(&[first.clone(), second.clone()], &candidates);
+
+        assert_eq!(found, Some(first_ja));
+        fs::remove_dir_all(first).expect("cleanup");
+        fs::remove_dir_all(second).expect("cleanup");
+    }
+
+    #[test]
+    fn falls_through_to_later_roots_when_earlier_ones_lack_the_locale() {
+        let empty = unique_temp_dir("taskforce-i18n-empty");
+        let populated = unique_temp_dir("taskforce-i18n-populated");
+        let expected = touch_catalog(&populated, "ja");
+        let candidates = vec!["ja_JP".to_string(), "ja".to_string()];
+
+        let found = find_catalog_path(&[empty.clone(), populated.clone()], &candidates);
+
+        assert_eq!(found, Some(expected));
+        fs::remove_dir_all(populated).expect("cleanup");
+    }
+
+    #[test]
+    fn returns_none_without_a_matching_catalog() {
+        let empty = unique_temp_dir("taskforce-i18n-none");
+        assert_eq!(find_catalog_path(&[empty], &["ja".to_string()]), None);
+    }
+
+    #[test]
+    fn bundled_japanese_catalog_translates_open_tasks() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("locale")
+            .join("ja")
+            .join("LC_MESSAGES")
+            .join("taskforce.mo");
+        let catalog = parse_catalog(&path).expect("bundled catalog");
+        assert_eq!(catalog.gettext("Open Tasks"), "オープンタスク");
     }
 }
