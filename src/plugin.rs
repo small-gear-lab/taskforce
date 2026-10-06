@@ -184,22 +184,24 @@ impl PluginExtra {
 }
 
 pub fn plugin_manifests() -> Result<Vec<PluginManifest>> {
-    let manifests = plugin_manifests_in_dir(&plugin_root_dir())?;
+    // Earlier roots win when the same plugin id appears in more than one.
+    let mut roots = Vec::new();
+    roots.extend(plugin_root_dir());
+    roots.push(legacy_plugin_root_dir());
     #[cfg(test)]
-    {
-        let mut merged = manifests;
-        for manifest in plugin_manifests_in_dir(&test_plugin_root_dir())? {
+    roots.push(test_plugin_root_dir());
+
+    let mut merged: Vec<PluginManifest> = Vec::new();
+    for root in roots {
+        for manifest in plugin_manifests_in_dir(&root)? {
             if merged.iter().any(|existing| existing.id == manifest.id) {
                 continue;
             }
             merged.push(manifest);
         }
-        merged.sort_by(|left, right| left.id.cmp(&right.id));
-        Ok(merged)
     }
-
-    #[cfg(not(test))]
-    Ok(manifests)
+    merged.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(merged)
 }
 
 fn plugin_manifests_in_dir(root: &Path) -> Result<Vec<PluginManifest>> {
@@ -258,7 +260,13 @@ fn parse_catalog(path: &Path) -> Result<Catalog> {
     Ok(Catalog::parse(file)?)
 }
 
-fn plugin_root_dir() -> PathBuf {
+fn plugin_root_dir() -> Option<PathBuf> {
+    crate::config::config_dir().map(|dir| dir.join("plugins"))
+}
+
+/// Pre-config-directory location: `plugins/` next to the source tree this binary
+/// was built from. Still scanned so existing setups keep working.
+fn legacy_plugin_root_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins")
 }
 

@@ -66,7 +66,7 @@ Task creation, editing, status changes, annotations, and all other mutating oper
 - manifest-driven custom fields
 - plugin i18n catalogs
 - bundled example plugins under `examples/plugins/`
-- runtime opt-in through `plugins/<plugin-id>/`
+- runtime opt-in through `~/.config/taskforce/plugins/<plugin-id>/`
 
 ## Local setup
 
@@ -158,11 +158,17 @@ When TLS verification needs an explicit CA file, set:
 
 ## Plugins
 
-Runtime plugin manifests are loaded only from:
+Runtime plugin manifests are loaded from the config directory
+(`$XDG_CONFIG_HOME/taskforce/` or `~/.config/taskforce/`):
 
 ```text
-plugins/<plugin-id>/manifest.toml
+~/.config/taskforce/plugins/<plugin-id>/manifest.toml
 ```
+
+For backward compatibility, `plugins/<plugin-id>/manifest.toml` inside the source
+tree the binary was built from is still scanned. The path is fixed at build time,
+so it stops working if the source tree moves until you rebuild. When the same
+plugin id exists in both places, the config directory wins.
 
 The repository provides bundled examples under:
 
@@ -170,7 +176,7 @@ The repository provides bundled examples under:
 examples/plugins/
 ```
 
-Those bundled plugins are not active until you copy or symlink them into `plugins/`.
+Those bundled plugins are not active until you copy or symlink them into `~/.config/taskforce/plugins/`.
 
 Current bundled examples:
 
