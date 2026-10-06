@@ -880,6 +880,38 @@ mod tests {
         assert!(fallback_data.is_ok());
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn dirs_derive_from_userprofile_when_home_is_unset() {
+        let _guard = env_lock().lock().expect("env lock");
+        let saved: Vec<_> = ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_DATA_HOME"]
+            .into_iter()
+            .map(|key| (key, std::env::var_os(key)))
+            .collect();
+        let profile = unique_temp_dir("taskforce-userprofile");
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("XDG_DATA_HOME");
+            std::env::set_var("USERPROFILE", &profile);
+        }
+
+        let config = config_dir();
+        let data = data_dir().expect("data dir");
+
+        for (key, value) in saved {
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+
+        assert_eq!(config, Some(profile.join(".config").join("taskforce")));
+        assert_eq!(data, profile.join(".local").join("share").join("taskforce"));
+    }
+
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
