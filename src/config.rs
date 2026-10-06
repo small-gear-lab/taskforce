@@ -275,9 +275,16 @@ pub(crate) fn config_dir() -> Option<PathBuf> {
         return Some(PathBuf::from(xdg_home).join("taskforce"));
     }
 
+    home_dir().map(|home| home.join(".config").join("taskforce"))
+}
+
+/// `HOME` when set (Unix, or Windows under Git Bash/MSYS2), otherwise the
+/// platform home directory (`USERPROFILE` on Windows).
+fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
         .map(PathBuf::from)
-        .map(|home| home.join(".config").join("taskforce"))
+        .or_else(std::env::home_dir)
 }
 
 pub fn config_paths() -> Result<Vec<PathBuf>> {
@@ -554,11 +561,8 @@ pub fn data_dir() -> Result<PathBuf> {
         return Ok(PathBuf::from(xdg_home).join("taskforce"));
     }
 
-    let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("HOME is not set"))?;
-    Ok(PathBuf::from(home)
-        .join(".local")
-        .join("share")
-        .join("taskforce"))
+    let home = home_dir().ok_or_else(|| anyhow!("home directory could not be determined"))?;
+    Ok(home.join(".local").join("share").join("taskforce"))
 }
 
 fn default_sqlite_path() -> Result<PathBuf> {
@@ -577,8 +581,9 @@ mod tests {
     use std::net::{IpAddr, SocketAddr};
 
     use super::{
-        AppConfig, BackendKind, ServerConfig, bootstrap_environment_from_args, config_paths,
-        env_file_paths, postgres_url_from_parts_env, resolve_environment_from_sources,
+        AppConfig, BackendKind, ServerConfig, bootstrap_environment_from_args, config_dir,
+        config_paths, data_dir, env_file_paths, postgres_url_from_parts_env,
+        resolve_environment_from_sources,
     };
 
     #[test]
@@ -834,6 +839,45 @@ mod tests {
             .expect("time")
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{nanos}"))
+    }
+
+    #[test]
+    fn dirs_derive_from_home_when_xdg_is_unset() {
+        let _guard = env_lock().lock().expect("env lock");
+        let saved: Vec<_> = ["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"]
+            .into_iter()
+            .map(|key| (key, std::env::var_os(key)))
+            .collect();
+        let home = PathBuf::from("/tmp/taskforce-home");
+        unsafe {
+            std::env::set_var("HOME", &home);
+            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("XDG_DATA_HOME");
+        }
+
+        let config = config_dir();
+        let data = data_dir().expect("data dir");
+
+        // An empty HOME must fall back to the platform home directory.
+        unsafe {
+            std::env::set_var("HOME", "");
+        }
+        let fallback_config = config_dir();
+        let fallback_data = data_dir();
+
+        for (key, value) in saved {
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+
+        assert_eq!(config, Some(home.join(".config").join("taskforce")));
+        assert_eq!(data, home.join(".local").join("share").join("taskforce"));
+        assert!(fallback_config.is_some());
+        assert!(fallback_data.is_ok());
     }
 
     fn env_lock() -> &'static Mutex<()> {
